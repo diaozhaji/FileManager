@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-path name="external_files" path="."/>
+    <!-- SD卡根目录（需要Android 5.0+） -->
+    <external-files-path
+        name="sd_card_root"
+        path="." />
+
+    <!-- 全路径访问（谨慎使用） -->
+    <root-path
+        name="root"
+        path="." />
+</paths>
