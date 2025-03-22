@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -21,7 +20,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="颜色"
+        android:text="文字颜色"
         android:textSize="16sp" />
 
     <RadioGroup
@@ -48,5 +47,43 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="蓝" />
+    </RadioGroup>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="背景颜色"
+        android:textSize="16sp" />
+
+    <RadioGroup
+        android:id="@+id/rgBgColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rbWhite"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="白" />
+
+        <RadioButton
+            android:id="@+id/rbYellow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="黄" />
+
+        <RadioButton
+            android:id="@+id/rbGreen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="绿" />
+
+        <RadioButton
+            android:id="@+id/rbGray"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="灰" />
     </RadioGroup>
 </LinearLayout>

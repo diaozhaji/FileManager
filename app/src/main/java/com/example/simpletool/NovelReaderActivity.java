@@ -57,14 +57,18 @@ public class NovelReaderActivity extends AppCompatActivity {
     private boolean isSpeaking = false;
     private int textSizeSp = 16;
     private int textColor = Color.BLACK;
-    private int bgColor = Color.WHITE;
+    private int bgColor = 0xFFF5E6CA; // 默认护眼黄
+    private final int[] colorOptions = {
+            0xFFFFFFFF,    // 白色
+            0xFFF5E6CA,    // 护眼黄
+            0xFFE6F5EA,    // 护眼绿
+            0xFFE0E0E0     // 浅灰
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_novel_reader);
-
-        // 初始化视图和功能
         initViews();
         initTextPaint();
         initTTS();
@@ -200,6 +204,18 @@ public class NovelReaderActivity extends AppCompatActivity {
             tts.stop();
             String text = pages.get(position).text;
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "read_aloud");
+            tts.setOnUtteranceCompletedListener(new TextToSpeech.OnUtteranceCompletedListener() {
+                @Override
+                public void onUtteranceCompleted(String utteranceId) {
+                    runOnUiThread(() -> {
+                        if (position < pages.size() - 1) {
+                            viewPager.setCurrentItem(position + 1, true);
+                        } else {
+                            isSpeaking = false;
+                        }
+                    });
+                }
+            });
         }
     }
 
@@ -213,10 +229,12 @@ public class NovelReaderActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
 
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
         });
     }
 
@@ -275,6 +293,19 @@ public class NovelReaderActivity extends AppCompatActivity {
         } else {
             String text = pages.get(currentPage).text;
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "read_aloud");
+
+            tts.setOnUtteranceCompletedListener(new TextToSpeech.OnUtteranceCompletedListener() {
+                @Override
+                public void onUtteranceCompleted(String utteranceId) {
+                    runOnUiThread(() -> {
+                        if (currentPage < pages.size() - 1) {
+                            viewPager.setCurrentItem(currentPage + 1, true);
+                        } else {
+                            isSpeaking = false;
+                        }
+                    });
+                }
+            });
             isSpeaking = true;
         }
     }
@@ -283,26 +314,58 @@ public class NovelReaderActivity extends AppCompatActivity {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_font_settings, null);
         SeekBar sbTextSize = dialogView.findViewById(R.id.sbTextSize);
         RadioGroup rgColor = dialogView.findViewById(R.id.rgColor);
+        RadioGroup rgBgColor = dialogView.findViewById(R.id.rgBgColor);
 
         sbTextSize.setProgress(textSizeSp - 8);
         switch (textColor) {
-            case Color.RED: rgColor.check(R.id.rbRed); break;
-            case Color.BLUE: rgColor.check(R.id.rbBlue); break;
-            default: rgColor.check(R.id.rbBlack);
+            case Color.RED:
+                rgColor.check(R.id.rbRed);
+                break;
+            case Color.BLUE:
+                rgColor.check(R.id.rbBlue);
+                break;
+            default:
+                rgColor.check(R.id.rbBlack);
         }
 
+        int bgIndex = getIndexForColor(bgColor);
+        rgBgColor.check(bgIndex == -1 ? R.id.rbYellow : bgIndex);
+
         new AlertDialog.Builder(this)
-                .setTitle("字体设置")
+                .setTitle("显示设置")
                 .setView(dialogView)
                 .setPositiveButton("确定", (dialog, which) -> {
                     textSizeSp = sbTextSize.getProgress() + 8;
                     int colorId = rgColor.getCheckedRadioButtonId();
                     textColor = colorId == R.id.rbRed ? Color.RED
                             : colorId == R.id.rbBlue ? Color.BLUE : Color.BLACK;
+                    int bgColorId = rgBgColor.getCheckedRadioButtonId();
+                    bgColor = colorOptions[getColorIndex(bgColorId)];
                     saveFontSettings();
                     refreshTextDisplay();
                 })
                 .show();
+    }
+
+    private int getColorIndex(int checkedId) {
+        if (checkedId == R.id.rbWhite) {
+            return 0;
+        } else if (checkedId == R.id.rbYellow) {
+            return 1;
+        } else if (checkedId == R.id.rbGreen) {
+            return 2;
+        } else if (checkedId == R.id.rbGray) {
+            return 3;
+        } else {
+            return 0;
+        }
+    }
+
+    private int getIndexForColor(int color) {
+        for (int i = 0; i < colorOptions.length; i++) {
+            if (colorOptions[i] == color) return i;
+        }
+        return -1;
     }
 
     private void saveFontSettings() {
@@ -310,6 +373,7 @@ public class NovelReaderActivity extends AppCompatActivity {
                 .edit()
                 .putInt("text_size", textSizeSp)
                 .putInt("text_color", textColor)
+                .putInt("bg_color", bgColor)
                 .apply();
     }
 
@@ -318,12 +382,15 @@ public class NovelReaderActivity extends AppCompatActivity {
                 .getInt("text_size", 16);
         textColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getInt("text_color", Color.BLACK);
+        bgColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getInt("bg_color", 0xFFF5E6CA);
     }
 
     private void refreshTextDisplay() {
         textPaint.setTextSize(spToPx(textSizeSp));
         textPaint.setColor(textColor);
-        splitPages(pages.stream().map(p -> p.text).collect(Collectors.joining()));
+        String fullText = pages.stream().map(p -> p.text).collect(Collectors.joining());
+        splitPages(fullText);
         viewPager.getAdapter().notifyDataSetChanged();
         viewPager.setCurrentItem(currentPage, false);
     }
@@ -415,6 +482,7 @@ public class NovelReaderActivity extends AppCompatActivity {
         String text;
         int start;
         int end;
+
         Page(String text, int start, int end) {
             this.text = text;
             this.start = start;
@@ -426,6 +494,7 @@ public class NovelReaderActivity extends AppCompatActivity {
         String title;
         int startPos;
         int endPos;
+
         Chapter(String title, int startPos, int endPos) {
             this.title = title;
             this.startPos = startPos;
@@ -461,6 +530,7 @@ public class NovelReaderActivity extends AppCompatActivity {
 
         class PageHolder extends RecyclerView.ViewHolder {
             TextView textView;
+
             PageHolder(View view) {
                 super(view);
                 textView = (TextView) view;
