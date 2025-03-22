@@ -29,6 +29,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -124,18 +125,32 @@ public class MainActivity extends AppCompatActivity {
         File currentDir = new File(path);
         fileList.clear();
 
-        // 添加返回上级
+        // 添加返回上级（保持原有逻辑）
         if (!path.equals(getParentStoragePath())) {
             fileList.add(new BackItem());
         }
 
-        File[] files = currentDir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory() || isSupportedFile(file)) {
-                    fileList.add(file);
+        File[] filesArray = currentDir.listFiles();
+        if (filesArray != null) {
+            List<File> directories = new ArrayList<>();
+            List<File> fileItems = new ArrayList<>();
+
+            // 分离目录和文件
+            for (File file : filesArray) {
+                if (file.isDirectory() && file.canRead()) {
+                    directories.add(file);
+                } else if (isSupportedFile(file)) {
+                    fileItems.add(file);
                 }
             }
+
+            // 分别排序
+            sortFiles(directories);
+            sortFiles(fileItems);
+
+            // 先添加目录，后添加文件
+            fileList.addAll(directories);
+            fileList.addAll(fileItems);
         }
 
         updatePathDisplay(path);
@@ -149,7 +164,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isSupportedFile(File file) {
+        if (file == null) return false;
         if (file.isDirectory()) return true;
+
         String[] supportedExt = {".txt", ".jpg", ".jpeg", ".png"};
         String fileName = file.getName().toLowerCase();
         for (String ext : supportedExt) {
@@ -274,6 +291,15 @@ public class MainActivity extends AppCompatActivity {
         } else {
             openFile(target);
         }
+    }
+
+    private void sortFiles(List<File> files) {
+        // 按文件名升序排列（忽略大小写）
+        Collections.sort(files, (f1, f2) -> {
+            // 处理可能的null值（虽然正常情况下不会出现）
+            if (f1 == null || f2 == null) return 0;
+            return f1.getName().compareToIgnoreCase(f2.getName());
+        });
     }
 
 
