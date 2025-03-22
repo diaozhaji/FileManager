@@ -1,39 +1,46 @@
-<?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- res/layout/activity_novel_reader.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
+    <!-- 添加 Toolbar -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp" />
+
+    <!-- 原有的 ViewPager2 -->
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@+id/controlPanel"/>
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
+    <!-- 底部进度条和按钮 -->
     <LinearLayout
-        android:id="@+id/controlPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:background="#CCFFFFFF"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/btnChapter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="章节"/>
+        android:orientation="horizontal">
 
         <SeekBar
             android:id="@+id/sbProgress"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="8dp"/>
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/tvProgress"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="14sp"/>
+            android:padding="8dp" />
+
+        <Button
+            android:id="@+id/btnChapter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="章节" />
     </LinearLayout>
-</RelativeLayout>
+</LinearLayout>

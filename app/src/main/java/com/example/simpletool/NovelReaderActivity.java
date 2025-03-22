@@ -2,19 +2,25 @@ package com.example.simpletool;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
@@ -30,31 +36,39 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-// NovelReaderActivity.java
 public class NovelReaderActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "NovelReaderPrefs";
     private static final String KEY_LAST_POSITION = "last_position_";
-
     private ViewPager2 viewPager;
     private TextView tvProgress;
     private SeekBar sbProgress;
-    private List<String> pages = new ArrayList<>();
+    private List<Page> pages = new ArrayList<>();
     private List<Chapter> chapters = new ArrayList<>();
     private String filePath;
     private int currentPage = 0;
-    private int currentChapter = 0;
     private TextPaint textPaint;
     private int pageWidth;
     private int pageHeight;
+
+    // 新增功能成员变量
+    private TextToSpeech tts;
+    private boolean isSpeaking = false;
+    private int textSizeSp = 16;
+    private int textColor = Color.BLACK;
+    private int bgColor = Color.WHITE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_novel_reader);
 
+        // 初始化视图和功能
         initViews();
         initTextPaint();
+        initTTS();
+        loadFontSettings();
         loadFile();
         setupViewPager();
         setupProgressBar();
@@ -64,49 +78,41 @@ public class NovelReaderActivity extends AppCompatActivity {
         viewPager = findViewById(R.id.viewPager);
         tvProgress = findViewById(R.id.tvProgress);
         sbProgress = findViewById(R.id.sbProgress);
-
-        // 添加章节跳转按钮
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
         findViewById(R.id.btnChapter).setOnClickListener(v -> showChapterDialog());
     }
 
     private void initTextPaint() {
         textPaint = new TextPaint();
-        textPaint.setColor(Color.BLACK);
-        textPaint.setTextSize(spToPx(16)); // 默认16sp
+        textPaint.setColor(textColor);
+        textPaint.setTextSize(spToPx(textSizeSp));
         textPaint.setAntiAlias(true);
 
-        // 获取页面尺寸
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        pageWidth = metrics.widthPixels - dpToPx(32); // 左右留白
-        pageHeight = metrics.heightPixels - dpToPx(96); // 上下留白
+        pageWidth = metrics.widthPixels - dpToPx(32);
+        pageHeight = metrics.heightPixels - dpToPx(96);
     }
 
     private void loadFile() {
         filePath = getIntent().getStringExtra("file_path");
         new Thread(() -> {
             try {
-                // 检测文件编码
                 String encoding = detectEncoding(new File(filePath));
                 String content = readFileWithEncoding(filePath, encoding);
-
-                // 解析章节
                 parseChapters(content);
-
-                // 分页处理
                 splitPages(content);
-
                 runOnUiThread(() -> {
-                    viewPager.getAdapter().notifyDataSetChanged();
+                    viewPager.setAdapter(new PagerAdapter());
                     restoreLastPosition();
                 });
             } catch (IOException e) {
-                runOnUiThread(() -> showErrorDialog());
+                runOnUiThread(this::showErrorDialog);
             }
         }).start();
     }
 
-    // 新增错误处理方法
     private void showErrorDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("文件读取失败")
@@ -119,23 +125,34 @@ public class NovelReaderActivity extends AppCompatActivity {
         chapters.clear();
         if (content == null || content.isEmpty()) return;
 
-        Pattern pattern = Pattern.compile("第[\\u4e00-\\u9fa5]+章\\s*.*");
+        Pattern pattern = Pattern.compile(
+                "^第[\\d\\u4e00-\\u9fa5]{1,10}[章回卷节]\\s+.+$",
+                Pattern.MULTILINE
+        );
         Matcher matcher = pattern.matcher(content);
+        List<Chapter> tempChapters = new ArrayList<>();
+        boolean hasRealChapters = false;
 
-        int lastEnd = 0;
         while (matcher.find()) {
-            int start = matcher.start();
-            if (start > lastEnd) {
-                chapters.add(new Chapter("前言", lastEnd, start));
-            }
-            chapters.add(new Chapter(matcher.group(), start, matcher.end()));
-            lastEnd = matcher.end();
-        }
-        if (lastEnd < content.length()) {
-            chapters.add(new Chapter("尾声", lastEnd, content.length()));
+            hasRealChapters = true;
+            String chapterTitle = matcher.group().trim();
+            tempChapters.add(new Chapter(chapterTitle, matcher.start(), matcher.end()));
         }
 
-        if (chapters.isEmpty()) {
+        if (hasRealChapters) {
+            int firstChapterStart = tempChapters.get(0).startPos;
+            if (firstChapterStart > 100) {
+                chapters.add(new Chapter("前言", 0, firstChapterStart));
+            }
+            for (int i = 0; i < tempChapters.size(); i++) {
+                Chapter current = tempChapters.get(i);
+                chapters.add(current);
+                if (i == tempChapters.size() - 1 &&
+                        content.length() - current.endPos > 100) {
+                    chapters.add(new Chapter("尾声", current.endPos, content.length()));
+                }
+            }
+        } else {
             chapters.add(new Chapter("全文", 0, content.length()));
         }
     }
@@ -147,11 +164,12 @@ public class NovelReaderActivity extends AppCompatActivity {
 
         int lineCount = layout.getLineCount();
         int startLine = 0;
+
         while (startLine < lineCount) {
             int endLine = findPageEndLine(layout, startLine);
             int start = layout.getLineStart(startLine);
             int end = layout.getLineEnd(endLine);
-            pages.add(content.substring(start, end));
+            pages.add(new Page(content.substring(start, end), start, end));
             startLine = endLine + 1;
         }
     }
@@ -166,19 +184,26 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private void setupViewPager() {
-        viewPager.setAdapter(new PagerAdapter());
         viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
                 currentPage = position;
                 updateProgress();
                 saveProgress();
+                handleTtsOnPageChange(position);
             }
         });
     }
 
+    private void handleTtsOnPageChange(int position) {
+        if (isSpeaking) {
+            tts.stop();
+            String text = pages.get(position).text;
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "read_aloud");
+        }
+    }
+
     private void setupProgressBar() {
-        sbProgress.setMax(pages.size());
         sbProgress.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -186,21 +211,17 @@ public class NovelReaderActivity extends AppCompatActivity {
                     viewPager.setCurrentItem(progress, true);
                 }
             }
-            // 其他方法实现...
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
+            public void onStartTrackingTouch(SeekBar seekBar) {}
 
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
+            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
     }
 
     private void updateProgress() {
+        sbProgress.setMax(pages.size() - 1);
         sbProgress.setProgress(currentPage);
         tvProgress.setText(String.format(Locale.getDefault(),
                 "%d/%d (%.1f%%)", currentPage + 1, pages.size(),
@@ -208,45 +229,105 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private void showChapterDialog() {
+        List<Chapter> filteredChapters = chapters.stream()
+                .filter(c -> !c.title.equals("前言") && !c.title.equals("尾声"))
+                .collect(Collectors.toList());
+
         new AlertDialog.Builder(this)
                 .setTitle("章节列表")
-                .setItems(getChapterTitles(), (dialog, which) -> {
-                    jumpToChapter(which);
-                })
+                .setItems(
+                        filteredChapters.stream()
+                                .map(c -> c.title)
+                                .toArray(String[]::new),
+                        (dialog, which) -> jumpToChapter(filteredChapters.get(which))
+                )
                 .show();
     }
 
-    private void jumpToChapter(int chapterIndex) {
-        if (chapterIndex < 0 || chapterIndex >= chapters.size()) return;
-
-        currentChapter = chapterIndex; // 更新当前章节
-        int targetPage = findPageForPosition(chapters.get(chapterIndex).startPos);
-        if (targetPage >= 0 && targetPage < pages.size()) {
-            viewPager.setCurrentItem(targetPage, true);
-        }
+    private void jumpToChapter(Chapter chapter) {
+        int targetPage = findPageForPosition(chapter.startPos);
+        viewPager.setCurrentItem(targetPage, true);
     }
 
     private int findPageForPosition(int charPosition) {
-        for (int i = 0; i < pages.size(); i++) {
-            int pageStart = 0;
-            for (int j = 0; j < i; j++) {
-                pageStart += pages.get(j).length();
+        int totalLength = 0;
+        for (Page page : pages) {
+            if (charPosition >= totalLength && charPosition < totalLength + page.text.length()) {
+                return pages.indexOf(page);
             }
-            int pageEnd = pageStart + pages.get(i).length();
-            if (charPosition >= pageStart && charPosition < pageEnd) {
-                return i;
-            }
+            totalLength += page.text.length();
         }
         return 0;
     }
 
-    private String[] getChapterTitles() {
-        return chapters.stream()
-                .map(c -> c.title)
-                .toArray(String[]::new);
+    private void initTTS() {
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.CHINA);
+            }
+        });
     }
 
-    // 编码检测
+    private void toggleReadAloud() {
+        if (isSpeaking) {
+            tts.stop();
+            isSpeaking = false;
+        } else {
+            String text = pages.get(currentPage).text;
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "read_aloud");
+            isSpeaking = true;
+        }
+    }
+
+    private void showFontSettings() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_font_settings, null);
+        SeekBar sbTextSize = dialogView.findViewById(R.id.sbTextSize);
+        RadioGroup rgColor = dialogView.findViewById(R.id.rgColor);
+
+        sbTextSize.setProgress(textSizeSp - 8);
+        switch (textColor) {
+            case Color.RED: rgColor.check(R.id.rbRed); break;
+            case Color.BLUE: rgColor.check(R.id.rbBlue); break;
+            default: rgColor.check(R.id.rbBlack);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("字体设置")
+                .setView(dialogView)
+                .setPositiveButton("确定", (dialog, which) -> {
+                    textSizeSp = sbTextSize.getProgress() + 8;
+                    int colorId = rgColor.getCheckedRadioButtonId();
+                    textColor = colorId == R.id.rbRed ? Color.RED
+                            : colorId == R.id.rbBlue ? Color.BLUE : Color.BLACK;
+                    saveFontSettings();
+                    refreshTextDisplay();
+                })
+                .show();
+    }
+
+    private void saveFontSettings() {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putInt("text_size", textSizeSp)
+                .putInt("text_color", textColor)
+                .apply();
+    }
+
+    private void loadFontSettings() {
+        textSizeSp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getInt("text_size", 16);
+        textColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getInt("text_color", Color.BLACK);
+    }
+
+    private void refreshTextDisplay() {
+        textPaint.setTextSize(spToPx(textSizeSp));
+        textPaint.setColor(textColor);
+        splitPages(pages.stream().map(p -> p.text).collect(Collectors.joining()));
+        viewPager.getAdapter().notifyDataSetChanged();
+        viewPager.setCurrentItem(currentPage, false);
+    }
+
     private String detectEncoding(File file) throws IOException {
         UniversalDetector detector = new UniversalDetector(null);
         byte[] buf = new byte[4096];
@@ -288,12 +369,40 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.reader_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.menu_font) {
+            showFontSettings();
+            return true;
+        } else if (id == R.id.menu_read_aloud) {
+            toggleReadAloud();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         saveProgress();
+        if (isSpeaking) tts.stop();
     }
 
-    // 单位转换方法
+    @Override
+    protected void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        super.onDestroy();
+    }
+
     private int dpToPx(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density);
     }
@@ -302,7 +411,28 @@ public class NovelReaderActivity extends AppCompatActivity {
         return (int) (sp * getResources().getDisplayMetrics().scaledDensity);
     }
 
-    // Adapter实现
+    private static class Page {
+        String text;
+        int start;
+        int end;
+        Page(String text, int start, int end) {
+            this.text = text;
+            this.start = start;
+            this.end = end;
+        }
+    }
+
+    private static class Chapter {
+        String title;
+        int startPos;
+        int endPos;
+        Chapter(String title, int startPos, int endPos) {
+            this.title = title;
+            this.startPos = startPos;
+            this.endPos = endPos;
+        }
+    }
+
     private class PagerAdapter extends RecyclerView.Adapter<PagerAdapter.PageHolder> {
         @NonNull
         @Override
@@ -311,7 +441,9 @@ public class NovelReaderActivity extends AppCompatActivity {
             textView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPaint.getTextSize());
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, spToPx(textSizeSp));
+            textView.setTextColor(textColor);
+            textView.setBackgroundColor(bgColor);
             textView.setLineSpacing(0, 1.2f);
             textView.setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16));
             return new PageHolder(textView);
@@ -319,7 +451,7 @@ public class NovelReaderActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(@NonNull PageHolder holder, int position) {
-            holder.textView.setText(pages.get(position));
+            holder.textView.setText(pages.get(position).text);
         }
 
         @Override
@@ -329,24 +461,10 @@ public class NovelReaderActivity extends AppCompatActivity {
 
         class PageHolder extends RecyclerView.ViewHolder {
             TextView textView;
-
             PageHolder(View view) {
                 super(view);
                 textView = (TextView) view;
             }
-        }
-    }
-
-    // 章节数据类
-    private static class Chapter {
-        String title;
-        int startPos;
-        int endPos;
-
-        Chapter(String title, int start, int end) {
-            this.title = title;
-            this.startPos = start;
-            this.endPos = end;
         }
     }
 }
