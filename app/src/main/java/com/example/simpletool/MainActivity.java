@@ -1,6 +1,7 @@
 package com.example.simpletool;
 
 import android.Manifest;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -34,8 +35,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -186,56 +189,107 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void openFile(File file) {
+        // 如果是目录则直接返回
         if (file.isDirectory()) return;
 
-        // 优先处理图片的预览逻辑
-        if (isImageFile(file)) {
-            // 图片文件：使用自定义浏览界面
-            File[] allFiles = file.getParentFile().listFiles();
-            List<String> imagePaths = new ArrayList<>();
-            int position = 0;
-
-            for (File f : allFiles) {
-                if (isImageFile(f)) {
-                    imagePaths.add(f.getAbsolutePath());
-                    if (f.equals(file)) {
-                        position = imagePaths.size() - 1;
-                    }
-                }
+        try {
+            // 检查文件可读性
+            if (!file.canRead()) {
+                Toast.makeText(this, "文件不可读", Toast.LENGTH_SHORT).show();
+                return;
             }
 
-            Intent intent = new Intent(this, ImagePreviewActivity.class);
-            intent.putExtra("image_paths", imagePaths.toArray(new String[0]));
-            intent.putExtra("position", position);
-            startActivity(intent);
+            // 根据文件类型选择打开方式
+            if (isTextFile(file)) {
+                openTextReader(file);
+            } else if (isImageFile(file)) {
+                openImageGallery(file);
+            } else {
+                openWithSystemApp(file);
+            }
+        } catch (SecurityException e) {
+            handleFileAccessError(file, e);
+        }
+    }
+
+    private void openImageGallery(File imageFile) {
+        File parentDir = imageFile.getParentFile();
+        File[] allFiles = parentDir.listFiles();
+
+        ArrayList<String> imagePaths = new ArrayList<>();
+        int position = 0;
+
+        // 过滤并排序图片文件
+        List<File> imageFiles = Arrays.stream(allFiles)
+                .filter(this::isImageFile)
+                .sorted((f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()))
+                .collect(Collectors.toList());
+
+        // 收集路径并找到当前图片位置
+        for (int i = 0; i < imageFiles.size(); i++) {
+            File f = imageFiles.get(i);
+            imagePaths.add(f.getAbsolutePath());
+            if (f.equals(imageFile)) {
+                position = i;
+            }
+        }
+
+        // 启动预览Activity
+        Intent intent = new Intent(this, ImagePreviewActivity.class);
+        intent.putStringArrayListExtra("image_paths", imagePaths);
+        intent.putExtra("position", position);
+        startActivity(intent);
+    }
+
+    // 文本文件检测方法
+    private boolean isTextFile(File file) {
+        String fileName = file.getName().toLowerCase();
+        return fileName.endsWith(".txt");
+    }
+
+    // 打开文本阅读器
+    private void openTextReader(File file) {
+        // 有效性验证
+        if (!file.exists() || file.length() == 0) {
+            Toast.makeText(this, "无效的文本文件", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 通用文件打开逻辑
         try {
-            Uri contentUri = FileProvider.getUriForFile(
+            Intent intent = new Intent(this, NovelReaderActivity.class);
+            // 传递文件绝对路径
+            intent.putExtra("file_path", file.getAbsolutePath());
+            // 添加阅读器标志
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "无法启动阅读器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 系统应用打开方法（原有逻辑）
+    private void openWithSystemApp(File file) {
+        try {
+            Uri uri = FileProvider.getUriForFile(
                     this,
                     getPackageName() + ".provider",
                     file
             );
 
-            String mimeType = getMimeType(file);
-
-            // 创建通用打开意图
             Intent intent = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(contentUri, mimeType)
+                    .setDataAndType(uri, getMimeType(file))
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            // 验证是否有可用应用
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
-                showNoHandlerDialog(file);
+                Toast.makeText(this, "没有可用的应用", Toast.LENGTH_SHORT).show();
             }
-        } catch (Exception e) {
+        } catch (IllegalArgumentException e) {
             handleFileAccessError(file, e);
         }
     }
+
 
     // 改进的MIME类型检测方法
     private String getMimeType(File file) {
@@ -276,6 +330,7 @@ public class MainActivity extends AppCompatActivity {
         String type = getMimeType(file);
         return type != null && type.startsWith("image/");
     }
+
 
     // 更新提示对话框
     private void showNoHandlerDialog(File file) {

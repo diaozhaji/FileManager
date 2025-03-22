@@ -26,6 +26,28 @@
             android:name=".ImagePreviewActivity"
             android:theme="@style/Theme.SimpleTool.FullScreen" />
 
+        <!-- 在 <application> 标签内添加 -->
+        <activity
+            android:name=".NovelReaderActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="true"
+            android:screenOrientation="sensor"
+            android:windowSoftInputMode="stateHidden">
+
+            <!-- 支持多种文本格式 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="text/*" />
+                <data android:pathPattern=".*\\.txt" />
+                <data android:pathPattern=".*\\.html" />
+                <data android:pathPattern=".*\\.md" />
+            </intent-filter>
+        </activity>
+
         <!-- 添加FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"

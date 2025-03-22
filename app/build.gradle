@@ -47,4 +47,7 @@ dependencies {
     implementation 'androidx.viewpager2:viewpager2:1.0.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.12.0'
 
+    implementation 'com.ibm.icu:icu4j:69.1' // 用于复杂中文处理
+    implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3' // 编码检测
+
 }
