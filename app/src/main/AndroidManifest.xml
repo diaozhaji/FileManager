@@ -22,6 +22,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ImagePreviewActivity"
+            android:theme="@style/Theme.SimpleTool.FullScreen" />
+
         <!-- 添加FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"

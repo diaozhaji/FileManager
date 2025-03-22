@@ -15,6 +15,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.MimeTypeMap;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,6 +29,10 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -139,7 +144,11 @@ public class MainActivity extends AppCompatActivity {
             for (File file : filesArray) {
                 if (file.isDirectory() && file.canRead()) {
                     directories.add(file);
-                } else if (isSupportedFile(file)) {
+                }
+//                else if (isSupportedFile(file)) {
+//                    fileItems.add(file);
+//                }
+                else {
                     fileItems.add(file);
                 }
             }
@@ -163,37 +172,56 @@ public class MainActivity extends AppCompatActivity {
                 "/storage";
     }
 
-    private boolean isSupportedFile(File file) {
-        if (file == null) return false;
-        if (file.isDirectory()) return true;
+//    private boolean isSupportedFile(File file) {
+//        if (file == null) return false;
+//        if (file.isDirectory()) return true;
+//
+//        String[] supportedExt = {".txt", ".jpg", ".jpeg", ".png"};
+//        String fileName = file.getName().toLowerCase();
+//        for (String ext : supportedExt) {
+//            if (fileName.endsWith(ext)) return true;
+//        }
+//        return false;
+//    }
 
-        String[] supportedExt = {".txt", ".jpg", ".jpeg", ".png"};
-        String fileName = file.getName().toLowerCase();
-        for (String ext : supportedExt) {
-            if (fileName.endsWith(ext)) return true;
-        }
-        return false;
-    }
 
     private void openFile(File file) {
-        try {
-            // 验证文件存在且可读
-            if (!file.exists() || !file.canRead()) {
-                Toast.makeText(this, "文件不可访问", Toast.LENGTH_SHORT).show();
-                return;
+        if (file.isDirectory()) return;
+
+        // 优先处理图片的预览逻辑
+        if (isImageFile(file)) {
+            // 图片文件：使用自定义浏览界面
+            File[] allFiles = file.getParentFile().listFiles();
+            List<String> imagePaths = new ArrayList<>();
+            int position = 0;
+
+            for (File f : allFiles) {
+                if (isImageFile(f)) {
+                    imagePaths.add(f.getAbsolutePath());
+                    if (f.equals(file)) {
+                        position = imagePaths.size() - 1;
+                    }
+                }
             }
 
-            // 获取文件MIME类型
-            String mimeType = getMimeType(file);
+            Intent intent = new Intent(this, ImagePreviewActivity.class);
+            intent.putExtra("image_paths", imagePaths.toArray(new String[0]));
+            intent.putExtra("position", position);
+            startActivity(intent);
+            return;
+        }
 
-            // 创建URI
+        // 通用文件打开逻辑
+        try {
             Uri contentUri = FileProvider.getUriForFile(
                     this,
                     getPackageName() + ".provider",
                     file
             );
 
-            // 创建打开意图
+            String mimeType = getMimeType(file);
+
+            // 创建通用打开意图
             Intent intent = new Intent(Intent.ACTION_VIEW)
                     .setDataAndType(contentUri, mimeType)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -202,11 +230,33 @@ public class MainActivity extends AppCompatActivity {
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
-                Toast.makeText(this, "没有可用的应用打开此文件", Toast.LENGTH_SHORT).show();
+                showNoHandlerDialog(file);
             }
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             handleFileAccessError(file, e);
         }
+    }
+
+    // 改进的MIME类型检测方法
+    private String getMimeType(File file) {
+        // 1. 通过文件扩展名检测
+        String extension = MimeTypeMap.getFileExtensionFromUrl(file.getName());
+        String mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+
+        // 2. 通过ContentResolver检测（更准确）
+        if (mimeType == null || mimeType.isEmpty()) {
+            try (InputStream is = new FileInputStream(file)) {
+                mimeType = URLConnection.guessContentTypeFromStream(is);
+            } catch (IOException ignored) {
+            }
+        }
+
+        // 3. 最终回退方案
+        if (mimeType == null || mimeType.isEmpty()) {
+            mimeType = "*/*"; // 通用类型
+        }
+
+        return mimeType;
     }
 
     private void handleFileAccessError(File file, Exception e) {
@@ -221,22 +271,19 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private String getMimeType(File file) {
-        String ext = file.getName()
-                .substring(file.getName().lastIndexOf(".") + 1)
-                .toLowerCase();
+    // 图片检测保留（用于特殊处理）
+    private boolean isImageFile(File file) {
+        String type = getMimeType(file);
+        return type != null && type.startsWith("image/");
+    }
 
-        switch (ext) {
-            case "txt":
-                return "text/plain";
-            case "jpg":
-            case "jpeg":
-                return "image/jpeg";
-            case "png":
-                return "image/png";
-            default:
-                return "*/*";
-        }
+    // 更新提示对话框
+    private void showNoHandlerDialog(File file) {
+        new AlertDialog.Builder(this)
+                .setTitle("无法打开文件")
+                .setMessage("没有找到可以打开 " + file.getName() + " 的应用程序")
+                .setPositiveButton("确定", null)
+                .show();
     }
 
     private void updatePathDisplay(String path) {
@@ -270,18 +317,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return true;
-    }
-
-    private String getSDCardPath() {
-        File[] externals = getExternalFilesDirs(null);
-        for (File f : externals) {
-            String path = f.getAbsolutePath();
-            // 检测典型SD卡路径模式
-            if (path.matches("/storage/[A-Z0-9]{4}-[A-Z0-9]{4}")) {
-                return path.replace("/Android/data/" + getPackageName() + "/files", "");
-            }
-        }
-        return null;
     }
 
     public void navigateTo(File target) {

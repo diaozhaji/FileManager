@@ -6,4 +6,9 @@
     </style>
 
     <style name="Theme.SimpleTool" parent="Base.Theme.SimpleTool" />
+
+    <style name="Theme.SimpleTool.FullScreen" parent="Base.Theme.SimpleTool">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
 </resources>
