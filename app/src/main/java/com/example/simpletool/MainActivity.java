@@ -235,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 启动预览Activity
-        Intent intent = new Intent(this, ImagePreviewActivity.class);
+        Intent intent = new Intent(this, ImageListActivity.class);
         intent.putStringArrayListExtra("image_paths", imagePaths);
         intent.putExtra("position", position);
         startActivity(intent);

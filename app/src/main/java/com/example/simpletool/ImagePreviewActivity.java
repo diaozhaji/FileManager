@@ -2,6 +2,7 @@ package com.example.simpletool;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -19,6 +20,7 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy;
 import com.github.chrisbanes.photoview.PhotoView;
 
 import java.io.File;
@@ -49,7 +51,7 @@ public class ImagePreviewActivity extends AppCompatActivity {
 
     private void initData() {
         Intent intent = getIntent();
-        String[] paths = intent.getStringArrayExtra("image_paths");
+        ArrayList<String> paths = intent.getStringArrayListExtra("image_paths");
         initialPosition = intent.getIntExtra("position", 0);
 
         imageFiles = new ArrayList<>();
@@ -65,8 +67,10 @@ public class ImagePreviewActivity extends AppCompatActivity {
 
     private void setupViewPager() {
         viewPager = findViewById(R.id.view_pager);
-        viewPager.setOrientation(ViewPager2.ORIENTATION_HORIZONTAL); // 可改为VERTICAL实现垂直滑动
+        viewPager.setOrientation(ViewPager2.ORIENTATION_HORIZONTAL);
         viewPager.setAdapter(new ImagePagerAdapter(this));
+        // 预加载左右各2页（共5页）
+        viewPager.setOffscreenPageLimit(2);
         viewPager.setCurrentItem(initialPosition, false);
     }
 
@@ -140,11 +144,26 @@ public class ImagePreviewActivity extends AppCompatActivity {
                                  @Nullable Bundle savedInstanceState) {
             PhotoView photoView = new PhotoView(requireContext());
 
+            // 获取屏幕尺寸
+            DisplayMetrics displayMetrics = new DisplayMetrics();
+            requireActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+            int screenWidth = displayMetrics.widthPixels;
+            int screenHeight = displayMetrics.heightPixels;
+
             Glide.with(this)
                     .load(imageFile)
+                    // 限制图片尺寸为屏幕大小，减少内存占用
+                    .override(screenWidth, screenHeight)
+                    // 使用高效降采样策略
+                    .downsample(DownsampleStrategy.CENTER_INSIDE)
+                    .fitCenter()
+                    // 先加载缩略图提升响应速度
+                    .thumbnail(
+                            Glide.with(this)
+                                    .load(imageFile)
+                                    .override(screenWidth / 2, screenHeight / 2)
+                    )
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
-//                    .placeholder(R.drawable.ic_loading)
-//                    .error(R.drawable.ic_error)
                     .into(photoView);
 
             return photoView;
