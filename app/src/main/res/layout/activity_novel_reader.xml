@@ -1,46 +1,67 @@
-<!-- res/layout/activity_novel_reader.xml -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <!-- 添加 Toolbar -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <!-- 主内容区域 -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:elevation="4dp" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-    <!-- 原有的 ViewPager2 -->
-    <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/viewPager"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimarySurface"
+            android:minHeight="48dp"
+            app:titleTextAppearance="@style/Toolbar.Title" />
 
-    <!-- 底部进度条和按钮 -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewPager"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- 底部控制栏 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_gravity="bottom"
+        android:background="@drawable/control_panel_bg"
+        android:padding="12dp">
 
-        <SeekBar
-            android:id="@+id/sbProgress"
+        <!-- 章节按钮（新增独立按钮） -->
+        <ImageButton
+            android:id="@+id/btnChapter"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="章节目录"
+            android:src="@drawable/ic_menu_book"
+            app:tintMode="src_in" />
+
+        <!-- 进度控制区域 -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="12dp">
 
-        <TextView
-            android:id="@+id/tvProgress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp" />
+            <SeekBar
+                android:id="@+id/sbProgress"
+                style="@style/CustomSeekBar"
+                android:layout_width="match_parent"
+                android:layout_height="24dp" />
 
-        <Button
-            android:id="@+id/btnChapter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="章节" />
+            <TextView
+                android:id="@+id/tvProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

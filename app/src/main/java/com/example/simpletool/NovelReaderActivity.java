@@ -1,6 +1,7 @@
 package com.example.simpletool;
 
 import android.graphics.Color;
+import android.graphics.PorterDuff;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.text.Layout;
@@ -12,6 +13,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageButton;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.SeekBar;
@@ -85,6 +87,11 @@ public class NovelReaderActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         findViewById(R.id.btnChapter).setOnClickListener(v -> showChapterDialog());
+    }
+
+    private void updateButtonColor(int textColor) {
+        ImageButton btnChapter = findViewById(R.id.btnChapter);
+        btnChapter.setColorFilter(textColor, PorterDuff.Mode.SRC_IN);
     }
 
     private void initTextPaint() {
@@ -343,6 +350,8 @@ public class NovelReaderActivity extends AppCompatActivity {
                     bgColor = colorOptions[getColorIndex(bgColorId)];
                     saveFontSettings();
                     refreshTextDisplay();
+                    //在主题色变化时更新按钮颜色
+                    updateButtonColor(bgColor);
                 })
                 .show();
     }
