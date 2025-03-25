@@ -5,33 +5,36 @@
     android:layout_height="match_parent">
 
     <!-- 主内容区域 -->
-    <LinearLayout
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 触摸检测层（需要放在内容层之上，但控件之下） -->
+    <View
+        android:id="@+id/touch_layer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:background="@android:color/transparent" />
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimarySurface"
-            android:minHeight="48dp"
-            app:titleTextAppearance="@style/Toolbar.Title" />
-
-        <androidx.viewpager2.widget.ViewPager2
-            android:id="@+id/viewPager"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-    </LinearLayout>
+    <!-- 顶部工具栏（需要保持在最上层） -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimarySurface"
+        android:minHeight="48dp"
+        app:titleTextAppearance="@style/Toolbar.Title" />
 
     <!-- 底部控制栏 -->
     <LinearLayout
+        android:id="@+id/bottom_controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="@drawable/control_panel_bg"
-        android:padding="12dp">
+        android:padding="12dp"
+        android:visibility="visible">
 
         <!-- 章节按钮（新增独立按钮） -->
         <ImageButton
@@ -64,4 +67,7 @@
                 android:textSize="12sp" />
         </LinearLayout>
     </LinearLayout>
+
 </FrameLayout>
+
+

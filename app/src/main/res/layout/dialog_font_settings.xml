@@ -4,22 +4,38 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!-- 字号设置 -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="字号"
+        android:layout_marginBottom="8dp"
+        android:text="字体大小"
         android:textSize="16sp" />
 
-    <SeekBar
-        android:id="@+id/sbTextSize"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:max="16"
-        android:progress="8" />
+        android:orientation="horizontal">
 
+        <SeekBar
+            android:id="@+id/sbTextSize"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvTextSize"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- 文字颜色 -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:text="文字颜色"
         android:textSize="16sp" />
 
@@ -27,31 +43,42 @@
         android:id="@+id/rgColor"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
 
         <RadioButton
             android:id="@+id/rbBlack"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="黑" />
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:drawablePadding="8dp"
+            android:text="黑色" />
 
         <RadioButton
             android:id="@+id/rbRed"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="红" />
+            android:layout_marginStart="16dp"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:text="红色" />
 
         <RadioButton
             android:id="@+id/rbBlue"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="蓝" />
+            android:layout_marginStart="16dp"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:text="蓝色" />
     </RadioGroup>
 
+    <!-- 背景颜色 -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:text="背景颜色"
         android:textSize="16sp" />
 
@@ -59,31 +86,61 @@
         android:id="@+id/rgBgColor"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
 
         <RadioButton
             android:id="@+id/rbWhite"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="白" />
+            android:layout_weight="1"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:gravity="center"
+            android:text="白色" />
 
         <RadioButton
             android:id="@+id/rbYellow"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="黄" />
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:gravity="center"
+            android:text="护眼黄" />
 
         <RadioButton
             android:id="@+id/rbGreen"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="绿" />
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:gravity="center"
+            android:text="护眼绿" />
 
         <RadioButton
             android:id="@+id/rbGray"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="灰" />
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/radio_color_selector"
+            android:button="@null"
+            android:gravity="center"
+            android:text="浅灰色" />
     </RadioGroup>
+
+    <!-- 预览文本 -->
+    <TextView
+        android:id="@+id/previewText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/preview_background"
+        android:padding="12dp"
+        android:text="预览文本：ABCDEabcde"
+        android:textAlignment="center" />
 </LinearLayout>

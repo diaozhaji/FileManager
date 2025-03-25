@@ -1,16 +1,24 @@
 package com.example.simpletool;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
@@ -67,6 +75,16 @@ public class NovelReaderActivity extends AppCompatActivity {
             0xFFE0E0E0     // 浅灰
     };
 
+    private boolean isControlsVisible = true;
+    private ValueAnimator controlsAnimator;
+
+    // 新增成员变量保存原始文本
+    private String originalContent;
+
+    // 字号范围调整为12sp-24sp
+    private static final int MIN_TEXT_SIZE = 12;
+    private static final int MAX_TEXT_SIZE = 24;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -87,6 +105,111 @@ public class NovelReaderActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         findViewById(R.id.btnChapter).setOnClickListener(v -> showChapterDialog());
+
+        // 修改触摸监听
+        View touchLayer = findViewById(R.id.touch_layer);
+        touchLayer.setOnTouchListener(new View.OnTouchListener() {
+            private float startX, startY;
+            private final int CLICK_THRESHOLD = dpToPx(4); // 4dp移动视为点击
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startX = event.getX();
+                        startY = event.getY();
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        handleTouchEvent(event.getX(), event.getY());
+                        return true;
+                }
+                return false;
+            }
+
+            private void handleTouchEvent(float x, float y) {
+                // 计算控件可见区域
+                Rect toolbarRect = getViewRect(findViewById(R.id.toolbar));
+                Rect bottomRect = getViewRect(findViewById(R.id.bottom_controls));
+
+                // 排除工具栏和底部控制栏区域
+                if (toolbarRect.contains((int) x, (int) y) ||
+                        bottomRect.contains((int) x, (int) y)) {
+                    return; // 不处理这些区域的点击
+                }
+
+                // 判断是否为有效点击（移动距离阈值）
+                if (Math.abs(x - startX) < CLICK_THRESHOLD &&
+                        Math.abs(y - startY) < CLICK_THRESHOLD) {
+                    handlePageClick(x);
+                }
+            }
+
+            private Rect getViewRect(View view) {
+                int[] location = new int[2];
+                view.getLocationOnScreen(location);
+                return new Rect(
+                        location[0],
+                        location[1],
+                        location[0] + view.getWidth(),
+                        location[1] + view.getHeight()
+                );
+            }
+
+            private void handlePageClick(float x) {
+                int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                float thirdWidth = screenWidth / 3f;
+
+                if (x < thirdWidth) {
+                    flipPage(-1);
+                } else if (x > 2 * thirdWidth) {
+                    flipPage(1);
+                } else {
+                    toggleControls();
+                }
+            }
+        });
+    }
+
+    private void flipPage(int direction) {
+        int current = viewPager.getCurrentItem();
+        int target = current + direction;
+
+        // 使用平滑滚动关闭的切换方式
+        viewPager.setCurrentItem(target, false);
+
+        // 更新进度显示
+        updateProgress();
+    }
+
+    private void toggleControls() {
+        View toolbar = findViewById(R.id.toolbar);
+        View bottomControls = findViewById(R.id.bottom_controls);
+
+        if (controlsAnimator != null && controlsAnimator.isRunning()) {
+            controlsAnimator.cancel();
+        }
+
+        float startAlpha = isControlsVisible ? 1f : 0f;
+        float endAlpha = isControlsVisible ? 0f : 1f;
+
+        controlsAnimator = ValueAnimator.ofFloat(startAlpha, endAlpha);
+        controlsAnimator.setDuration(200);
+        controlsAnimator.addUpdateListener(animation -> {
+            float alpha = (float) animation.getAnimatedValue();
+            toolbar.setAlpha(alpha);
+            bottomControls.setAlpha(alpha);
+        });
+
+        controlsAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                toolbar.setVisibility(isControlsVisible ? View.GONE : View.VISIBLE);
+                bottomControls.setVisibility(isControlsVisible ? View.GONE : View.VISIBLE);
+                isControlsVisible = !isControlsVisible;
+            }
+        });
+
+        controlsAnimator.start();
     }
 
     private void updateButtonColor(int textColor) {
@@ -106,12 +229,14 @@ public class NovelReaderActivity extends AppCompatActivity {
         pageHeight = metrics.heightPixels - dpToPx(96);
     }
 
+
     private void loadFile() {
         filePath = getIntent().getStringExtra("file_path");
         new Thread(() -> {
             try {
                 String encoding = detectEncoding(new File(filePath));
                 String content = readFileWithEncoding(filePath, encoding);
+                originalContent = content; // 保存原始内容
                 parseChapters(content);
                 splitPages(content);
                 runOnUiThread(() -> {
@@ -170,8 +295,15 @@ public class NovelReaderActivity extends AppCompatActivity {
 
     private void splitPages(String content) {
         pages.clear();
-        Layout layout = new StaticLayout(content, textPaint, pageWidth,
-                Layout.Alignment.ALIGN_NORMAL, 1.2f, 0f, false);
+        Layout layout = new StaticLayout(
+                content,
+                textPaint,
+                pageWidth,  // 使用最新计算的宽度
+                Layout.Alignment.ALIGN_NORMAL,
+                1.2f,
+                0f,
+                false
+        );
 
         int lineCount = layout.getLineCount();
         int startLine = 0;
@@ -317,65 +449,134 @@ public class NovelReaderActivity extends AppCompatActivity {
         }
     }
 
+    // 添加成员变量保存对话框视图引用
+    private View dialogView;
+    private SeekBar sbTextSize;
+    private RadioGroup rgColor;
+    private RadioGroup rgBgColor;
+    private TextView tvTextSize;
+    private TextView previewText;
+
+
     private void showFontSettings() {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_font_settings, null);
-        SeekBar sbTextSize = dialogView.findViewById(R.id.sbTextSize);
-        RadioGroup rgColor = dialogView.findViewById(R.id.rgColor);
-        RadioGroup rgBgColor = dialogView.findViewById(R.id.rgBgColor);
+        dialogView = getLayoutInflater().inflate(R.layout.dialog_font_settings, null);
+        sbTextSize = dialogView.findViewById(R.id.sbTextSize);
+        tvTextSize = dialogView.findViewById(R.id.tvTextSize);
+        rgColor = dialogView.findViewById(R.id.rgColor);
+        rgBgColor = dialogView.findViewById(R.id.rgBgColor);
+        previewText = dialogView.findViewById(R.id.previewText);
 
-        sbTextSize.setProgress(textSizeSp - 8);
-        switch (textColor) {
-            case Color.RED:
-                rgColor.check(R.id.rbRed);
-                break;
-            case Color.BLUE:
-                rgColor.check(R.id.rbBlue);
-                break;
-            default:
-                rgColor.check(R.id.rbBlack);
-        }
+        // 初始化字号设置（12-24sp）
+        sbTextSize.setMax(MAX_TEXT_SIZE - MIN_TEXT_SIZE);
+        sbTextSize.setProgress(textSizeSp - MIN_TEXT_SIZE);
+        tvTextSize.setText(textSizeSp + " sp");
 
-        int bgIndex = getIndexForColor(bgColor);
-        rgBgColor.check(bgIndex == -1 ? R.id.rbYellow : bgIndex);
+        // 初始化预览文本
+        previewText.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
+        previewText.setTextColor(textColor);
+        previewText.setBackgroundColor(bgColor);
 
+        // 实时更新监听
+        sbTextSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int newSize = progress + MIN_TEXT_SIZE;
+                tvTextSize.setText(newSize + " sp");
+                previewText.setTextSize(TypedValue.COMPLEX_UNIT_SP, newSize);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        // 初始化颜色选择
+        initColorRadioGroup(rgColor, new int[]{Color.BLACK, Color.RED, Color.BLUE}, textColor);
+        initBgRadioGroup(rgBgColor, colorOptions, bgColor);
+
+        // 颜色选择监听
+        rgColor.setOnCheckedChangeListener((group, checkedId) -> {
+            previewText.setTextColor(getSelectedColor(group));
+        });
+        rgBgColor.setOnCheckedChangeListener((group, checkedId) -> {
+            previewText.setBackgroundColor(getSelectedColor(group));
+        });
+
+//        new AlertDialog.Builder(this)
+//                .setView(dialogView)
+//                .setPositiveButton("确定", (dialog, which) -> applySettings())
+//                .show();
         new AlertDialog.Builder(this)
-                .setTitle("显示设置")
                 .setView(dialogView)
                 .setPositiveButton("确定", (dialog, which) -> {
-                    textSizeSp = sbTextSize.getProgress() + 8;
-                    int colorId = rgColor.getCheckedRadioButtonId();
-                    textColor = colorId == R.id.rbRed ? Color.RED
-                            : colorId == R.id.rbBlue ? Color.BLUE : Color.BLACK;
-                    int bgColorId = rgBgColor.getCheckedRadioButtonId();
-                    bgColor = colorOptions[getColorIndex(bgColorId)];
-                    saveFontSettings();
-                    refreshTextDisplay();
-                    //在主题色变化时更新按钮颜色
-                    updateButtonColor(bgColor);
+                    applySettings(); // 使用Lambda确保监听器绑定正确
                 })
+                .setNegativeButton("取消", null)
                 .show();
     }
 
-    private int getColorIndex(int checkedId) {
-        if (checkedId == R.id.rbWhite) {
-            return 0;
-        } else if (checkedId == R.id.rbYellow) {
-            return 1;
-        } else if (checkedId == R.id.rbGreen) {
-            return 2;
-        } else if (checkedId == R.id.rbGray) {
-            return 3;
-        } else {
-            return 0;
+    private int getSelectedColor(RadioGroup group) {
+        int checkedId = group.getCheckedRadioButtonId();
+        RadioButton rb = group.findViewById(checkedId);
+        return (int) rb.getTag(); // 通过setTag存储颜色值
+    }
+
+    private void initColorRadioGroup(RadioGroup group, int[] colors, int selectedColor) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            RadioButton rb = (RadioButton) group.getChildAt(i);
+            rb.setTag(colors[i]); // 存储颜色值
+            if (colors[i] == selectedColor) {
+                group.check(rb.getId());
+            }
         }
     }
 
-    private int getIndexForColor(int color) {
-        for (int i = 0; i < colorOptions.length; i++) {
-            if (colorOptions[i] == color) return i;
+    // 初始化背景颜色单选组
+    private void initBgRadioGroup(RadioGroup group, int[] colors, int selectedColor) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            RadioButton rb = (RadioButton) group.getChildAt(i);
+            if (i < colors.length) {
+                // 设置背景色预览
+                GradientDrawable bgDrawable = new GradientDrawable();
+                bgDrawable.setShape(GradientDrawable.RECTANGLE);
+                bgDrawable.setCornerRadius(dpToPx(4));
+                bgDrawable.setColor(colors[i]);
+                bgDrawable.setStroke(dpToPx(2), Color.LTGRAY);
+
+                rb.setBackground(bgDrawable);
+                rb.setTag(colors[i]); // 存储颜色值
+                rb.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+
+                // 添加选中状态标记
+                if (colors[i] == selectedColor) {
+                    group.check(rb.getId());
+                    rb.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_check, 0);
+                }
+            }
         }
-        return -1;
     }
+
+    // 应用设置的方法
+    private void applySettings() {
+        Log.d("@@@", "applySettings");
+        // 获取最新设置
+        textSizeSp = sbTextSize.getProgress() + MIN_TEXT_SIZE;
+        textColor = getSelectedColor(rgColor);
+        bgColor = getSelectedColor(rgBgColor);
+
+        // 保存设置
+        saveFontSettings();
+        // 刷新显示
+        refreshTextDisplay();
+        // 更新按钮颜色
+        updateButtonColor(textColor);
+
+    }
+
 
     private void saveFontSettings() {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -396,10 +597,20 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private void refreshTextDisplay() {
+        // 更新文本绘制参数
         textPaint.setTextSize(spToPx(textSizeSp));
         textPaint.setColor(textColor);
-        String fullText = pages.stream().map(p -> p.text).collect(Collectors.joining());
-        splitPages(fullText);
+
+        // 重新计算页面尺寸
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        pageWidth = metrics.widthPixels - dpToPx(32);
+        pageHeight = metrics.heightPixels - dpToPx(96);
+
+        // 使用原始内容重新分页
+        splitPages(originalContent);
+
+        // 刷新视图
         viewPager.getAdapter().notifyDataSetChanged();
         viewPager.setCurrentItem(currentPage, false);
     }

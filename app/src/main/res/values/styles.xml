@@ -15,11 +15,20 @@
         <item name="fontFamily">sans-serif-medium</item>
     </style>
 
-    <!-- res/values/styles.xml -->
     <style name="CustomSeekBar" parent="Widget.AppCompat.SeekBar">
         <item name="android:progressBackgroundTint">#33000000</item>  <!-- 轨道背景色 -->
         <item name="android:progressTint">?attr/colorPrimary</item>   <!-- 进度条颜色 -->
         <item name="android:thumbTint">?attr/colorPrimary</item>       <!-- 滑块颜色 -->
         <item name="android:minHeight">8dp</item>                     <!-- 最小高度 -->
+    </style>
+
+    <style name="CustomAlertDialog" parent="Theme.MaterialComponents.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogButton</item>
+    </style>
+
+    <style name="DialogButton" parent="Widget.MaterialComponents.Button.TextButton">
+        <item name="android:textColor">?attr/colorPrimary</item>
     </style>
 </resources>
