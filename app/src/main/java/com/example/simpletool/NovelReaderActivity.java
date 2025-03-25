@@ -554,7 +554,7 @@ public class NovelReaderActivity extends AppCompatActivity {
                 // 添加选中状态标记
                 if (colors[i] == selectedColor) {
                     group.check(rb.getId());
-                    rb.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_check, 0);
+//                    rb.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_check, 0);
                 }
             }
         }

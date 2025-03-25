@@ -53,6 +53,7 @@
             android:background="@drawable/radio_color_selector"
             android:button="@null"
             android:drawablePadding="8dp"
+            android:gravity="center"
             android:text="黑色" />
 
         <RadioButton
@@ -62,6 +63,7 @@
             android:layout_marginStart="16dp"
             android:background="@drawable/radio_color_selector"
             android:button="@null"
+            android:gravity="center"
             android:text="红色" />
 
         <RadioButton
@@ -71,6 +73,7 @@
             android:layout_marginStart="16dp"
             android:background="@drawable/radio_color_selector"
             android:button="@null"
+            android:gravity="center"
             android:text="蓝色" />
     </RadioGroup>
 
@@ -85,7 +88,8 @@
     <RadioGroup
         android:id="@+id/rgBgColor"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="80dp"
+        android:gravity="center"
         android:orientation="horizontal"
         android:paddingTop="8dp">
 
