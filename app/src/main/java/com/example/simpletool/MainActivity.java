@@ -14,6 +14,8 @@ import android.os.storage.StorageVolume;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.MimeTypeMap;
@@ -57,6 +59,16 @@ public class MainActivity extends AppCompatActivity {
             "jpg", "jpeg", "png", "gif", "bmp", "webp" // 基础图片格式
     };
 
+    // 新增排序模式枚举
+    private enum SortMode {
+        NAME_ASC, NAME_DESC,
+        SIZE_ASC, SIZE_DESC,
+        DATE_ASC, DATE_DESC
+    }
+
+    private SortMode currentSortMode = SortMode.NAME_ASC;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,6 +87,9 @@ public class MainActivity extends AppCompatActivity {
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(fileAdapter);
+
+        // 绑定排序按钮点击事件
+        findViewById(R.id.btn_sort).setOnClickListener(v -> showSortDialog());
     }
 
     private void checkPermissions() {
@@ -100,6 +115,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showStorageRoots() {
+
+        Log.e("@@@", "showStorageRoots");
         fileList.clear();
         currentPath = null;
 
@@ -130,44 +147,37 @@ public class MainActivity extends AppCompatActivity {
 
         updatePathDisplay("存储设备");
         fileAdapter.notifyDataSetChanged();
+
+        Log.e("@@@", "文件列表" + fileList.size());
     }
 
     private void loadDirectory(String path) {
+
+        Log.e("@@@", "loadDirectory" + path);
+
         currentPath = path;
         File currentDir = new File(path);
         fileList.clear();
 
-        // 添加返回上级（保持原有逻辑）
         if (!path.equals(getParentStoragePath())) {
             fileList.add(new BackItem());
         }
 
         File[] filesArray = currentDir.listFiles();
         if (filesArray != null) {
-            List<File> directories = new ArrayList<>();
-            List<File> fileItems = new ArrayList<>();
-
-            // 分离目录和文件
+            List<File> allFiles = new ArrayList<>();
             for (File file : filesArray) {
                 if (file.isDirectory() && file.canRead()) {
-                    directories.add(file);
-                }
-//                else if (isSupportedFile(file)) {
-//                    fileItems.add(file);
-//                }
-                else {
-                    fileItems.add(file);
+                    allFiles.add(file);
+                } else if (file.isFile()) {
+                    allFiles.add(file);
                 }
             }
-
-            // 分别排序
-            sortFiles(directories);
-            sortFiles(fileItems);
-
-            // 先添加目录，后添加文件
-            fileList.addAll(directories);
-            fileList.addAll(fileItems);
+            sortFiles(allFiles);
+            fileList.addAll(allFiles);
         }
+
+        Log.e("@@@", "文件列表" + fileList.size());
 
         updatePathDisplay(path);
         fileAdapter.notifyDataSetChanged();
@@ -333,15 +343,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    // 更新提示对话框
-    private void showNoHandlerDialog(File file) {
-        new AlertDialog.Builder(this)
-                .setTitle("无法打开文件")
-                .setMessage("没有找到可以打开 " + file.getName() + " 的应用程序")
-                .setPositiveButton("确定", null)
-                .show();
-    }
-
     private void updatePathDisplay(String path) {
         String displayText = currentPath == null ?
                 "选择存储位置" :
@@ -385,12 +386,73 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void sortFiles(List<File> files) {
-        // 按文件名升序排列（忽略大小写）
+        if (files == null || files.isEmpty()) return;
+
         Collections.sort(files, (f1, f2) -> {
-            // 处理可能的null值（虽然正常情况下不会出现）
-            if (f1 == null || f2 == null) return 0;
-            return f1.getName().compareToIgnoreCase(f2.getName());
+            if (f1.isDirectory() && !f2.isDirectory()) return -1;
+            if (!f1.isDirectory() && f2.isDirectory()) return 1;
+
+            switch (currentSortMode) {
+                case NAME_ASC:
+                    return f1.getName().compareToIgnoreCase(f2.getName());
+                case NAME_DESC:
+                    return f2.getName().compareToIgnoreCase(f1.getName());
+                case SIZE_ASC:
+                    return Long.compare(f1.length(), f2.length());
+                case SIZE_DESC:
+                    return Long.compare(f2.length(), f1.length());
+                case DATE_ASC:
+                    return Long.compare(f1.lastModified(), f2.lastModified());
+                case DATE_DESC:
+                    return Long.compare(f2.lastModified(), f1.lastModified());
+                default:
+                    return 0;
+            }
         });
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == R.id.menu_sort) {
+            showSortDialog();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void showSortDialog() {
+        String[] sortOptions = {"名称升序", "名称降序", "大小升序", "大小降序", "时间升序", "时间降序"};
+        new AlertDialog.Builder(this)
+                .setTitle("排序方式")
+                .setItems(sortOptions, (dialog, which) -> {
+                    currentSortMode = SortMode.values()[which];
+                    loadDirectory(currentPath);
+                })
+                .show();
+    }
+
+    private void showDeleteDialog(File file) {
+        new AlertDialog.Builder(this)
+                .setTitle("删除文件")
+                .setMessage("确定删除 " + file.getName() + " 吗？")
+                .setPositiveButton("删除", (dialog, which) -> deleteFile(file))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void deleteFile(File file) {
+        if (file.delete()) {
+            Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+            loadDirectory(currentPath);
+        } else {
+            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
+        }
     }
 
 
@@ -483,8 +545,13 @@ public class MainActivity extends AppCompatActivity {
                     File file = (File) item;
                     fh.icon.setText(file.isDirectory() ? "📁" : "📄");
                     fh.name.setText(file.getName());
-                    fh.itemView.setOnClickListener(v -> {
-                        ((MainActivity) context).navigateTo(file);
+                    fh.itemView.setOnClickListener(v -> ((MainActivity) context).navigateTo(file));
+                    fh.itemView.setOnLongClickListener(v -> {
+                        if (!file.isDirectory()) {
+                            ((MainActivity) context).showDeleteDialog(file);
+                            return true;
+                        }
+                        return false;
                     });
                 }
             }
