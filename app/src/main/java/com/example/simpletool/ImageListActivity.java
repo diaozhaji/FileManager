@@ -92,69 +92,6 @@ public class ImageListActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull ImageViewHolder holder, int position) {
             File file = imageFiles.get(position);
-//            ImageView imageView = holder.imageView;
-//
-//            // 重置布局参数
-//            imageView.setLayoutParams(new FrameLayout.LayoutParams(
-//                    FrameLayout.LayoutParams.MATCH_PARENT,
-//                    FrameLayout.LayoutParams.WRAP_CONTENT
-//            ));
-//
-//            // 使用ViewTreeObserver获取实际宽度
-//            imageView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-//                @Override
-//                public boolean onPreDraw() {
-//                    imageView.getViewTreeObserver().removeOnPreDrawListener(this);
-//                    int viewWidth = imageView.getWidth();
-//
-//                    if (viewWidth > 0) {
-//                        Glide.with(holder.itemView)
-//                                .load(file)
-//                                .override(viewWidth) // 按实际宽度加载
-//                                .into(new CustomTarget<Drawable>() {
-//                                    @Override
-//                                    public void onResourceReady(@NonNull Drawable resource, Transition<? super Drawable> transition) {
-//                                        String key = file.getAbsolutePath();
-//                                        Integer cachedHeight = sizeCache.get(key);
-//
-//                                        if (cachedHeight != null) {
-//                                            imageView.getLayoutParams().height = cachedHeight;
-//                                            imageView.setImageDrawable(resource);
-//                                            imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-//                                            return;
-//                                        }
-//
-//                                        int orientation = getExifOrientation(file);
-//                                        int imageWidth = resource.getIntrinsicWidth();
-//                                        int imageHeight = resource.getIntrinsicHeight();
-//
-//                                        // 处理EXIF旋转
-//                                        if (orientation == 90 || orientation == 270) {
-//                                            int temp = imageWidth;
-//                                            imageWidth = imageHeight;
-//                                            imageHeight = temp;
-//                                        }
-//
-//                                        // 计算目标高度
-//                                        float ratio = (float) imageHeight / imageWidth;
-//                                        int targetHeight = (int) (viewWidth * ratio);
-//
-//                                        // 设置最终尺寸
-//                                        imageView.getLayoutParams().height = targetHeight;
-//                                        imageView.setImageDrawable(resource);
-//                                        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-//
-//                                        // 存入缓存
-//                                        sizeCache.put(key, targetHeight);
-//                                    }
-//
-//                                    @Override
-//                                    public void onLoadCleared(@Nullable Drawable placeholder) {}
-//                                });
-//                    }
-//                    return true;
-//                }
-//            });
 
             // 加载缩略图
             Glide.with(holder.itemView)

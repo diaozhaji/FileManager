@@ -355,14 +355,24 @@ public class NovelReaderActivity extends AppCompatActivity {
             // 无章节时处理全文
             chapters.add(new Chapter("全文", 0, content.length()));
         }
+
+        Log.e("@@@", "切分章节共：" + chapters.size());
     }
 
     private void splitPages(String content) {
         pages.clear();
+
+        // 重新计算实际可用高度（考虑当前控件布局）
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        int toolbarHeight = findViewById(R.id.toolbar).getHeight();
+        int bottomControlsHeight = findViewById(R.id.bottom_controls).getHeight();
+        pageHeight = metrics.heightPixels - toolbarHeight - bottomControlsHeight - dpToPx(32); // 32dp为文本边距
+
         Layout layout = new StaticLayout(
                 content,
                 textPaint,
-                pageWidth,  // 使用最新计算的宽度
+                pageWidth,
                 Layout.Alignment.ALIGN_NORMAL,
                 1.2f,
                 0f,
@@ -382,12 +392,32 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private int findPageEndLine(Layout layout, int startLine) {
-        int height = 0;
+        float accumulatedHeight = 0;
+        final float pageHeightWithMargin = pageHeight - dpToPx(16); // 增加底部留白
+
         for (int i = startLine; i < layout.getLineCount(); i++) {
-            height += layout.getLineBottom(i) - layout.getLineTop(i);
-            if (height > pageHeight) return i - 1;
+            float lineHeight = layout.getLineBottom(i) - layout.getLineTop(i);
+            if (accumulatedHeight + lineHeight > pageHeightWithMargin) {
+                return i - 1;
+            }
+            accumulatedHeight += lineHeight;
         }
         return layout.getLineCount() - 1;
+    }
+
+    private void refreshTextDisplay() {
+        // 更新文本参数后重新计算控件高度
+        textPaint.setTextSize(spToPx(textSizeSp));
+        textPaint.setColor(textColor);
+
+        // 获取最新控件尺寸
+        findViewById(R.id.toolbar).post(() -> {
+            findViewById(R.id.bottom_controls).post(() -> {
+                splitPages(originalContent);
+                viewPager.getAdapter().notifyDataSetChanged();
+                viewPager.setCurrentItem(currentPage, false);
+            });
+        });
     }
 
     private void setupViewPager() {
@@ -655,25 +685,6 @@ public class NovelReaderActivity extends AppCompatActivity {
                 .getInt("text_color", Color.BLACK);
         bgColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getInt("bg_color", 0xFFF5E6CA);
-    }
-
-    private void refreshTextDisplay() {
-        // 更新文本绘制参数
-        textPaint.setTextSize(spToPx(textSizeSp));
-        textPaint.setColor(textColor);
-
-        // 重新计算页面尺寸
-        DisplayMetrics metrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        pageWidth = metrics.widthPixels - dpToPx(32);
-        pageHeight = metrics.heightPixels - dpToPx(96);
-
-        // 使用原始内容重新分页
-        splitPages(originalContent);
-
-        // 刷新视图
-        viewPager.getAdapter().notifyDataSetChanged();
-        viewPager.setCurrentItem(currentPage, false);
     }
 
     private String detectEncoding(File file) throws IOException {
