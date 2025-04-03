@@ -75,7 +75,7 @@ public class ImagePreviewActivity extends AppCompatActivity {
     }
 
     private boolean isImageFile(File file) {
-        String[] supportedExt = {".jpg", ".jpeg", ".png"};
+        String[] supportedExt = {".jpg", ".jpeg", ".png", ".webp"};
         String name = file.getName().toLowerCase();
         for (String ext : supportedExt) {
             if (name.endsWith(ext)) return true;
@@ -153,7 +153,7 @@ public class ImagePreviewActivity extends AppCompatActivity {
             Glide.with(this)
                     .load(imageFile)
                     // 限制图片尺寸为屏幕大小，减少内存占用
-                    .override(screenWidth, screenHeight)
+//                    .override(screenWidth, screenHeight)
                     // 使用高效降采样策略
                     .downsample(DownsampleStrategy.CENTER_INSIDE)
                     .fitCenter()
@@ -163,7 +163,7 @@ public class ImagePreviewActivity extends AppCompatActivity {
                                     .load(imageFile)
                                     .override(screenWidth / 2, screenHeight / 2)
                     )
-                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
                     .into(photoView);
 
             return photoView;

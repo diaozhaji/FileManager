@@ -53,6 +53,10 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.READ_EXTERNAL_STORAGE
     };
 
+    private static final String[] IMAGE_EXTENSIONS = {
+            "jpg", "jpeg", "png", "gif", "bmp", "webp" // 基础图片格式
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -174,19 +178,6 @@ public class MainActivity extends AppCompatActivity {
                 Environment.getStorageDirectory().getAbsolutePath() :
                 "/storage";
     }
-
-//    private boolean isSupportedFile(File file) {
-//        if (file == null) return false;
-//        if (file.isDirectory()) return true;
-//
-//        String[] supportedExt = {".txt", ".jpg", ".jpeg", ".png"};
-//        String fileName = file.getName().toLowerCase();
-//        for (String ext : supportedExt) {
-//            if (fileName.endsWith(ext)) return true;
-//        }
-//        return false;
-//    }
-
 
     private void openFile(File file) {
         // 如果是目录则直接返回
@@ -325,10 +316,20 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 图片检测保留（用于特殊处理）
-    private boolean isImageFile(File file) {
-        String type = getMimeType(file);
-        return type != null && type.startsWith("image/");
+    public boolean isImageFile(File file) {
+        if (file == null) return false;
+
+        String fileName = file.getName();
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex == -1) return false; // 无后缀名
+
+        String extension = fileName.substring(dotIndex + 1).toLowerCase();
+        for (String imgExt : IMAGE_EXTENSIONS) {
+            if (imgExt.equals(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 

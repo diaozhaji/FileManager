@@ -39,7 +39,7 @@
             android:name=".NovelReaderActivity"
             android:configChanges="orientation|screenSize"
             android:exported="true"
-            android:screenOrientation="sensor"
+            android:screenOrientation="portrait"
             android:windowSoftInputMode="stateHidden">
 
             <!-- 支持多种文本格式 -->

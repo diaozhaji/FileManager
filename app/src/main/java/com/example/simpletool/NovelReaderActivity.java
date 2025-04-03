@@ -237,6 +237,7 @@ public class NovelReaderActivity extends AppCompatActivity {
                 String encoding = detectEncoding(new File(filePath));
                 String content = readFileWithEncoding(filePath, encoding);
                 originalContent = content; // 保存原始内容
+                Log.e("@@@", originalContent.length() + "字数");
                 parseChapters(content);
                 splitPages(content);
                 runOnUiThread(() -> {
@@ -261,34 +262,97 @@ public class NovelReaderActivity extends AppCompatActivity {
         chapters.clear();
         if (content == null || content.isEmpty()) return;
 
+        // 增强版正则表达式，支持更多章节格式
         Pattern pattern = Pattern.compile(
-                "^第[\\d\\u4e00-\\u9fa5]{1,10}[章回卷节]\\s+.+$",
-                Pattern.MULTILINE
+                "(?m)^\\s*" +
+                        "(?:" +
+                        "(?:第\\s*[\\d\\u4e00-\\u9fa5]{1,10}\\s*[章回卷节篇集部])" +  // 支持带空格的格式如"第 三 章"
+                        "|(?:[卷篇集部]\\s*[\\d\\u4e00-\\u9fa5]{1,10})" +           // 支持"卷三"等格式
+                        "|(?:[序楔终][卷章]?\\s*)" +                                // 支持序章、楔子、终章
+                        ")" +
+                        "\\s*[：:—-]?\\s*" +                                       // 支持多种分隔符
+                        ".+" +                                                      // 必须包含实际标题内容
+                        "$"
         );
-        Matcher matcher = pattern.matcher(content);
-        List<Chapter> tempChapters = new ArrayList<>();
-        boolean hasRealChapters = false;
 
+        Matcher matcher = pattern.matcher(content);
+        List<Chapter> titleMatches = new ArrayList<>();
+
+        // 收集所有可能的章节标题
         while (matcher.find()) {
-            hasRealChapters = true;
-            String chapterTitle = matcher.group().trim();
-            tempChapters.add(new Chapter(chapterTitle, matcher.start(), matcher.end()));
+            String fullTitle = matcher.group().trim();
+            titleMatches.add(new Chapter(
+                    fullTitle,
+                    matcher.start(),
+                    matcher.end()
+            ));
         }
 
-        if (hasRealChapters) {
-            int firstChapterStart = tempChapters.get(0).startPos;
-            if (firstChapterStart > 100) {
-                chapters.add(new Chapter("前言", 0, firstChapterStart));
+        if (!titleMatches.isEmpty()) {
+            // 智能合并相邻标题（防止错误匹配导致的分割错误）
+            List<Chapter> validChapters = new ArrayList<>();
+            Chapter prev = null;
+            for (Chapter curr : titleMatches) {
+                if (prev == null) {
+                    prev = curr;
+                    continue;
+                }
+                // 如果两个标题间距过近（小于100字符），视为错误匹配
+                if (curr.startPos - prev.endPos < 100) {
+                    // 保留位置更合理的一个（取更长的标题）
+                    if (curr.title.length() > prev.title.length()) {
+                        prev = curr;
+                    }
+                } else {
+                    validChapters.add(prev);
+                    prev = curr;
+                }
             }
-            for (int i = 0; i < tempChapters.size(); i++) {
-                Chapter current = tempChapters.get(i);
-                chapters.add(current);
-                if (i == tempChapters.size() - 1 &&
-                        content.length() - current.endPos > 100) {
-                    chapters.add(new Chapter("尾声", current.endPos, content.length()));
+            validChapters.add(prev);
+
+            // 处理前言部分（首个章节前的内容）
+            Chapter first = validChapters.get(0);
+            if (first.startPos > 0) {
+                String preface = content.substring(0, first.startPos).trim();
+                if (!preface.isEmpty()) {
+                    chapters.add(new Chapter("前言", 0, first.startPos));
+                }
+            }
+
+            // 构建完整章节结构
+            for (int i = 0; i < validChapters.size(); i++) {
+                Chapter current = validChapters.get(i);
+                int endPos = (i < validChapters.size() - 1)
+                        ? validChapters.get(i + 1).startPos
+                        : content.length();
+
+                // 自动修正章节结束位置（跳过空白区域）
+                while (endPos > current.startPos &&
+                        Character.isWhitespace(content.charAt(endPos - 1))) {
+                    endPos--;
+                }
+
+                chapters.add(new Chapter(
+                        current.title,
+                        current.startPos,
+                        endPos
+                ));
+            }
+
+            // 检测尾声部分（最后章节后的有效内容）
+            Chapter last = chapters.get(chapters.size() - 1);
+            if (last.endPos < content.length()) {
+                String epilogue = content.substring(last.endPos).trim();
+                if (epilogue.length() > 50) {  // 至少50字符才视为尾声
+                    chapters.add(new Chapter(
+                            "尾声",
+                            last.endPos,
+                            content.length()
+                    ));
                 }
             }
         } else {
+            // 无章节时处理全文
             chapters.add(new Chapter("全文", 0, content.length()));
         }
     }
@@ -506,10 +570,7 @@ public class NovelReaderActivity extends AppCompatActivity {
             previewText.setBackgroundColor(getSelectedColor(group));
         });
 
-//        new AlertDialog.Builder(this)
-//                .setView(dialogView)
-//                .setPositiveButton("确定", (dialog, which) -> applySettings())
-//                .show();
+
         new AlertDialog.Builder(this)
                 .setView(dialogView)
                 .setPositiveButton("确定", (dialog, which) -> {
