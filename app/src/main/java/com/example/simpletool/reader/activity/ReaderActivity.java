@@ -48,9 +48,9 @@ public class ReaderActivity extends AppCompatActivity
         readerView.setListener(this);
 
         // 底部按钮事件
-        findViewById(R.id.btn_chapter_list).setOnClickListener(v -> showChapterDialog());
-        findViewById(R.id.btn_tts).setOnClickListener(v -> startTTS());
-        findViewById(R.id.btn_settings).setOnClickListener(v -> showSettings());
+//        findViewById(R.id.btn_chapter_list).setOnClickListener(v -> showChapterDialog());
+//        findViewById(R.id.btn_tts).setOnClickListener(v -> startTTS());
+//        findViewById(R.id.btn_settings).setOnClickListener(v -> showSettings());
     }
 
     private void loadBookData() {
@@ -58,22 +58,22 @@ public class ReaderActivity extends AppCompatActivity
         currentBook = getIntent().getParcelableExtra("book");
         currentChapter = getIntent().getParcelableExtra("chapter");
 
-        // 从数据库加载阅读进度[4,5](@ref)
-        AppDatabase db = Room.databaseBuilder(this, AppDatabase.class, "books")
-                .allowMainThreadQueries().build();
-        Bookmark lastBookmark = db.bookDao().getLastBookmark(currentBook.getId());
-
-        // 加载章节内容
-        String content = FileParser.parseChapter(
-                currentChapter.getFilePath(),
-                currentChapter.getEncoding()
-        );
-        readerView.setContent(content);
-
-        // 恢复阅读位置
-        if (lastBookmark != null) {
-            readerView.jumpToPage(lastBookmark.getPage());
-        }
+//        // 从数据库加载阅读进度[4,5](@ref)
+//        AppDatabase db = Room.databaseBuilder(this, AppDatabase.class, "books")
+//                .allowMainThreadQueries().build();
+//        Bookmark lastBookmark = db.bookDao().getLastBookmark(currentBook.getId());
+//
+//        // 加载章节内容
+//        String content = FileParser.parseChapter(
+//                currentChapter.getFilePath(),
+//                currentChapter.getEncoding()
+//        );
+//        readerView.setContent(content);
+//
+//        // 恢复阅读位置
+//        if (lastBookmark != null) {
+//            readerView.jumpToPage(lastBookmark.getPage());
+//        }
     }
 
     private void setupReaderConfig() {
@@ -100,17 +100,17 @@ public class ReaderActivity extends AppCompatActivity
     }
 
     private void saveReadingProgress(int page) {
-        new Thread(() -> {
-            Bookmark bookmark = new Bookmark(
-                    currentBook.getId(),
-                    currentChapter.getId(),
-                    page,
-                    System.currentTimeMillis()
-            );
-            AppDatabase db = Room.databaseBuilder(this, AppDatabase.class, "books")
-                    .build();
-            db.bookDao().insertBookmark(bookmark);
-        }).start();
+//        new Thread(() -> {
+//            Bookmark bookmark = new Bookmark(
+//                    currentBook.getId(),
+//                    currentChapter.getId(),
+//                    page,
+//                    System.currentTimeMillis()
+//            );
+//            AppDatabase db = Room.databaseBuilder(this, AppDatabase.class, "books")
+//                    .build();
+//            db.bookDao().insertBookmark(bookmark);
+//        }).start();
     }
 
     private void toggleControlBars() {
