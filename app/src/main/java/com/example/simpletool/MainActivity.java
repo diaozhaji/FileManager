@@ -52,14 +52,14 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CODE_PERMISSIONS = 1001;
     private static final String[] REQUIRED_PERMISSIONS = {
-            Manifest.permission.READ_EXTERNAL_STORAGE
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
     private static final String[] IMAGE_EXTENSIONS = {
-            "jpg", "jpeg", "png", "gif", "bmp", "webp" // 基础图片格式
+            "jpg", "jpeg", "png", "gif", "bmp", "webp"
     };
 
-    // 新增排序模式枚举
     private enum SortMode {
         NAME_ASC, NAME_DESC,
         SIZE_ASC, SIZE_DESC,
@@ -68,7 +68,6 @@ public class MainActivity extends AppCompatActivity {
 
     private SortMode currentSortMode = SortMode.NAME_ASC;
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -76,7 +75,6 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         checkPermissions();
-        requestStorageManagerPermission();
     }
 
     private void initViews() {
@@ -88,13 +86,14 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(fileAdapter);
 
-        // 绑定排序按钮点击事件
         findViewById(R.id.btn_sort).setOnClickListener(v -> showSortDialog());
     }
 
     private void checkPermissions() {
+        // Android 10+ 不再需要 MANAGE_EXTERNAL_STORAGE 也能访问公共目录
         if (allPermissionsGranted()) {
-            showStorageRoots();
+            // 直接进入 Download 目录（最安全的公共目录）
+            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
         } else {
             ActivityCompat.requestPermissions(
                     this,
@@ -104,62 +103,55 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void requestStorageManagerPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                !Environment.isExternalStorageManager()) {
-            Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
-            );
-            startActivity(intent);
-        }
-    }
+    // 关键修复：获取 Android 10 兼容的 Download 目录
+    private File getSafeDownloadDirectory() {
+        // 优先使用标准 API
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
 
-    private void showStorageRoots() {
+        // 备用方案：尝试常见路径（vivo/华为等厂商定制路径）
+        if (downloadDir == null || !downloadDir.exists() || !downloadDir.canRead()) {
+            String[] fallbackPaths = {
+                    Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download",
+                    Environment.getExternalStorageDirectory().getAbsolutePath() + "/download",
+                    "/sdcard/Download",
+                    "/sdcard/download",
+                    "/storage/emulated/0/Download",
+                    "/storage/emulated/0/download"
+            };
 
-        Log.e("@@@", "showStorageRoots");
-        fileList.clear();
-        currentPath = null;
-
-        // 添加内置存储
-        fileList.add(new StorageVolumeItem(
-                Environment.getExternalStorageDirectory(),
-                "内部存储",
-                false
-        ));
-
-        // 添加外置存储
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            StorageManager sm = getSystemService(StorageManager.class);
-            for (StorageVolume volume : sm.getStorageVolumes()) {
-                if (volume.isRemovable()) {
-                    File volumePath = null;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        volumePath = volume.getDirectory();
-                    }
-                    fileList.add(new StorageVolumeItem(
-                            volumePath,
-                            "SD卡 - " + volume.getDescription(this),
-                            true
-                    ));
+            for (String path : fallbackPaths) {
+                File dir = new File(path);
+                if (dir.exists() && dir.isDirectory() && dir.canRead()) {
+                    return dir;
                 }
             }
         }
 
-        updatePathDisplay("存储设备");
-        fileAdapter.notifyDataSetChanged();
+        // 最后兜底：应用私有目录（始终可访问）
+        File privateDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        if (privateDir != null && privateDir.exists()) {
+            return privateDir;
+        }
 
-        Log.e("@@@", "文件列表" + fileList.size());
+        // 终极兜底：外部存储根目录（Android 10 可能受限，但比 /storage 安全）
+        return Environment.getExternalStorageDirectory();
     }
 
     private void loadDirectory(String path) {
+        Log.d("FileExplorer", "Loading directory: " + path);
 
-        Log.e("@@@", "loadDirectory" + path);
+        if (path == null || path.isEmpty()) {
+            // 无法加载时回退到安全目录
+            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+            return;
+        }
 
         currentPath = path;
         File currentDir = new File(path);
         fileList.clear();
 
-        if (!path.equals(getParentStoragePath())) {
+        // 添加"返回上级"按钮（特殊处理 Android 10 根目录）
+        if (shouldShowBackButton(currentDir)) {
             fileList.add(new BackItem());
         }
 
@@ -167,40 +159,61 @@ public class MainActivity extends AppCompatActivity {
         if (filesArray != null) {
             List<File> allFiles = new ArrayList<>();
             for (File file : filesArray) {
-                if (file.isDirectory() && file.canRead()) {
-                    allFiles.add(file);
-                } else if (file.isFile()) {
-                    allFiles.add(file);
+                if (file != null) {
+                    // 只显示可读的目录和文件
+                    if ((file.isDirectory() && file.canRead()) || file.isFile()) {
+                        allFiles.add(file);
+                    }
                 }
             }
             sortFiles(allFiles);
             fileList.addAll(allFiles);
+        } else {
+            // 无权限访问时的友好提示
+            Toast.makeText(this, "无法访问此目录（权限限制）", Toast.LENGTH_SHORT).show();
+            // 自动返回到安全目录
+            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+            return;
         }
-
-        Log.e("@@@", "文件列表" + fileList.size());
 
         updatePathDisplay(path);
         fileAdapter.notifyDataSetChanged();
     }
 
-    private String getParentStoragePath() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ?
-                Environment.getStorageDirectory().getAbsolutePath() :
-                "/storage";
+    // 关键修复：智能判断是否显示"返回上级"按钮
+    private boolean shouldShowBackButton(File currentDir) {
+        if (currentDir == null) return false;
+
+        // Android 10 特殊处理：禁止返回到 /storage 根目录
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            String parentPath = currentDir.getParent();
+            if (parentPath != null) {
+                // 检测是否要返回到危险根目录
+                if (parentPath.equals("/storage") ||
+                        parentPath.equals("/mnt") ||
+                        parentPath.equals("/")) {
+                    return false; // 阻止返回
+                }
+                // 检测是否要返回到外部存储根目录（/storage/emulated/0）
+                File externalStorage = Environment.getExternalStorageDirectory();
+                if (externalStorage != null && parentPath.equals(externalStorage.getAbsolutePath())) {
+                    // 允许返回到外部存储根目录，但仅显示安全子目录
+                    return true;
+                }
+            }
+        }
+        return currentDir.getParent() != null;
     }
 
     private void openFile(File file) {
-        // 如果是目录则直接返回
-        if (file.isDirectory()) return;
+        if (file == null || file.isDirectory()) return;
 
         try {
-            // 检查文件可读性
             if (!file.canRead()) {
-                Toast.makeText(this, "文件不可读", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "文件不可读（权限限制）", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            // 根据文件类型选择打开方式
             if (isTextFile(file)) {
                 openTextReader(file);
             } else if (isImageFile(file)) {
@@ -208,25 +221,32 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 openWithSystemApp(file);
             }
-        } catch (SecurityException e) {
+        } catch (Exception e) {
             handleFileAccessError(file, e);
         }
     }
 
     private void openImageGallery(File imageFile) {
         File parentDir = imageFile.getParentFile();
+        if (parentDir == null || !parentDir.canRead()) {
+            Toast.makeText(this, "无法访问图片所在目录", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         File[] allFiles = parentDir.listFiles();
+        if (allFiles == null) {
+            Toast.makeText(this, "目录为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
         ArrayList<String> imagePaths = new ArrayList<>();
         int position = 0;
 
-        // 过滤并排序图片文件
         List<File> imageFiles = Arrays.stream(allFiles)
                 .filter(this::isImageFile)
                 .sorted((f1, f2) -> f1.getName().compareToIgnoreCase(f2.getName()))
                 .collect(Collectors.toList());
 
-        // 收集路径并找到当前图片位置
         for (int i = 0; i < imageFiles.size(); i++) {
             File f = imageFiles.get(i);
             imagePaths.add(f.getAbsolutePath());
@@ -235,40 +255,38 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 启动预览Activity
+        if (imagePaths.isEmpty()) {
+            Toast.makeText(this, "该目录下没有图片", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         Intent intent = new Intent(this, ImageListActivity.class);
         intent.putStringArrayListExtra("image_paths", imagePaths);
         intent.putExtra("position", position);
         startActivity(intent);
     }
 
-    // 文本文件检测方法
     private boolean isTextFile(File file) {
-        String fileName = file.getName().toLowerCase();
-        return fileName.endsWith(".txt");
+        if (file == null) return false;
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".txt") || name.endsWith(".log") || name.endsWith(".md") || name.endsWith(".json");
     }
 
-    // 打开文本阅读器
     private void openTextReader(File file) {
-        // 有效性验证
-        if (!file.exists() || file.length() == 0) {
+        if (file == null || !file.exists() || file.length() == 0) {
             Toast.makeText(this, "无效的文本文件", Toast.LENGTH_SHORT).show();
             return;
         }
 
         try {
             Intent intent = new Intent(this, NovelReaderActivity.class);
-            // 传递文件绝对路径
             intent.putExtra("file_path", file.getAbsolutePath());
-            // 添加阅读器标志
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "无法启动阅读器", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "未找到文本阅读器", Toast.LENGTH_SHORT).show();
         }
     }
 
-    // 系统应用打开方法（原有逻辑）
     private void openWithSystemApp(File file) {
         try {
             Uri uri = FileProvider.getUriForFile(
@@ -284,92 +302,121 @@ public class MainActivity extends AppCompatActivity {
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
             } else {
-                Toast.makeText(this, "没有可用的应用", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "没有应用可以打开此文件", Toast.LENGTH_SHORT).show();
             }
-        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
             handleFileAccessError(file, e);
         }
     }
 
-
-    // 改进的MIME类型检测方法
     private String getMimeType(File file) {
-        // 1. 通过文件扩展名检测
+        if (file == null) return "*/*";
+
         String extension = MimeTypeMap.getFileExtensionFromUrl(file.getName());
-        String mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
-
-        // 2. 通过ContentResolver检测（更准确）
-        if (mimeType == null || mimeType.isEmpty()) {
-            try (InputStream is = new FileInputStream(file)) {
-                mimeType = URLConnection.guessContentTypeFromStream(is);
-            } catch (IOException ignored) {
-            }
+        if (extension != null) {
+            String mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+            if (mimeType != null) return mimeType;
         }
 
-        // 3. 最终回退方案
-        if (mimeType == null || mimeType.isEmpty()) {
-            mimeType = "*/*"; // 通用类型
+        // 备用方案：通过文件流检测
+        try (InputStream is = new FileInputStream(file)) {
+            String mimeType = URLConnection.guessContentTypeFromStream(is);
+            if (mimeType != null && !mimeType.isEmpty()) return mimeType;
+        } catch (IOException ignored) {
         }
 
-        return mimeType;
+        return "*/*";
     }
 
     private void handleFileAccessError(File file, Exception e) {
-        Log.e("FileAccess", "文件访问错误: " + file.getAbsolutePath(), e);
+        Log.e("FileAccess", "Error accessing: " + (file != null ? file.getAbsolutePath() : "null"), e);
 
-        // 显示详细错误信息
-        new AlertDialog.Builder(this)
-                .setTitle("文件打开失败")
-                .setMessage("无法访问以下路径的文件：\n" + file.getAbsolutePath() +
-                        "\n\n可能原因：\n1. 文件路径不受支持\n2. SD卡未正确挂载")
-                .setPositiveButton("确定", null)
-                .show();
+        String errorMsg = "无法打开文件";
+        if (e instanceof SecurityException) {
+            errorMsg = "权限不足，无法访问此文件";
+        } else if (file != null && !file.canRead()) {
+            errorMsg = "文件不可读（可能被其他应用占用）";
+        }
+
+        Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show();
     }
 
     public boolean isImageFile(File file) {
-        if (file == null) return false;
+        if (file == null || !file.isFile()) return false;
 
-        String fileName = file.getName();
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex == -1) return false; // 无后缀名
-
-        String extension = fileName.substring(dotIndex + 1).toLowerCase();
-        for (String imgExt : IMAGE_EXTENSIONS) {
-            if (imgExt.equals(extension)) {
-                return true;
-            }
+        String name = file.getName().toLowerCase();
+        for (String ext : IMAGE_EXTENSIONS) {
+            if (name.endsWith("." + ext)) return true;
         }
         return false;
     }
 
-
     private void updatePathDisplay(String path) {
-        String displayText = currentPath == null ?
-                "选择存储位置" :
-                path.replace(Environment.getExternalStorageDirectory().getPath(), "内部存储");
-        tvCurrentPath.setText(displayText);
+        if (path == null || path.isEmpty()) {
+            tvCurrentPath.setText("文件浏览器");
+            return;
+        }
+
+        // Android 10 友好路径显示
+        String displayPath = path;
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        if (downloadDir != null && path.startsWith(downloadDir.getAbsolutePath())) {
+            displayPath = "Download" + path.substring(downloadDir.getAbsolutePath().length());
+        } else {
+            File externalStorage = Environment.getExternalStorageDirectory();
+            if (externalStorage != null) {
+                displayPath = path.replace(externalStorage.getAbsolutePath(), "内部存储");
+            }
+        }
+
+        // 限制路径长度避免UI溢出
+        if (displayPath.length() > 40) {
+            displayPath = "..." + displayPath.substring(displayPath.length() - 37);
+        }
+
+        tvCurrentPath.setText(displayPath);
     }
 
     @Override
     public void onBackPressed() {
         if (currentPath == null) {
             super.onBackPressed();
-        } else {
-            File currentDir = new File(currentPath);
-            String parent = currentDir.getParent();
-            if (parent != null && !parent.equals(getParentStoragePath())) {
-                loadDirectory(parent);
-            } else {
-                showStorageRoots();
+            return;
+        }
+
+        File currentDir = new File(currentPath);
+        String parentPath = currentDir.getParent();
+
+        // Android 10 关键修复：禁止返回到危险根目录
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && parentPath != null) {
+            if (parentPath.equals("/storage") ||
+                    parentPath.equals("/mnt") ||
+                    parentPath.equals("/")) {
+                // 直接返回到安全目录
+                loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+                return;
             }
+
+            // 检测是否要返回到外部存储根目录
+            File externalStorage = Environment.getExternalStorageDirectory();
+            if (externalStorage != null && parentPath.equals(externalStorage.getAbsolutePath())) {
+                // 允许返回，但限制只能看到安全子目录
+                loadDirectory(parentPath);
+                return;
+            }
+        }
+
+        if (parentPath != null) {
+            loadDirectory(parentPath);
+        } else {
+            // 已到根目录，退出应用
+            super.onBackPressed();
         }
     }
 
-    // 权限检查相关方法
     private boolean allPermissionsGranted() {
         for (String permission : REQUIRED_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(
-                    this, permission) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 return false;
             }
         }
@@ -377,8 +424,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void navigateTo(File target) {
+        if (target == null) return;
 
         if (target.isDirectory()) {
+            // Android 10 关键修复：阻止访问危险目录
+            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+                String path = target.getAbsolutePath();
+                if (path.startsWith("/storage") && !path.startsWith(Environment.getExternalStorageDirectory().getAbsolutePath())) {
+                    Toast.makeText(this, "Android 10 限制：无法访问此目录", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
             loadDirectory(target.getAbsolutePath());
         } else {
             openFile(target);
@@ -389,6 +445,7 @@ public class MainActivity extends AppCompatActivity {
         if (files == null || files.isEmpty()) return;
 
         Collections.sort(files, (f1, f2) -> {
+            // 目录始终排在文件前面
             if (f1.isDirectory() && !f2.isDirectory()) return -1;
             if (!f1.isDirectory() && f2.isDirectory()) return 1;
 
@@ -427,57 +484,58 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSortDialog() {
-        String[] sortOptions = {"名称升序", "名称降序", "大小升序", "大小降序", "时间升序", "时间降序"};
+        String[] sortOptions = {"名称↑", "名称↓", "大小↑", "大小↓", "时间↑", "时间↓"};
         new AlertDialog.Builder(this)
                 .setTitle("排序方式")
                 .setItems(sortOptions, (dialog, which) -> {
                     currentSortMode = SortMode.values()[which];
-                    loadDirectory(currentPath);
+                    if (currentPath != null) {
+                        loadDirectory(currentPath);
+                    }
                 })
                 .show();
     }
 
     private void showDeleteDialog(File file) {
+        if (file == null) return;
+
         new AlertDialog.Builder(this)
-                .setTitle("删除文件")
-                .setMessage("确定删除 " + file.getName() + " 吗？")
+                .setTitle("删除确认")
+                .setMessage("确定要删除 \"" + file.getName() + "\" 吗？\n\n此操作不可恢复！")
                 .setPositiveButton("删除", (dialog, which) -> deleteFile(file))
                 .setNegativeButton("取消", null)
                 .show();
     }
 
     private void deleteFile(File file) {
-        if (file.delete()) {
-            Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show();
+        if (file == null) return;
+
+        boolean success = file.delete();
+        String msg = success ? "删除成功" : "删除失败（权限不足）";
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+
+        if (success && currentPath != null) {
             loadDirectory(currentPath);
-        } else {
-            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show();
         }
     }
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                showStorageRoots();
+                loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
             } else {
-                Toast.makeText(this, "需要存储权限才能使用本应用", Toast.LENGTH_SHORT).show();
-                finish();
+                Toast.makeText(this, "需要存储权限才能浏览文件", Toast.LENGTH_SHORT).show();
+                // 提供降级方案：使用应用私有目录
+                File privateDir = getExternalFilesDir(null);
+                if (privateDir != null) {
+                    loadDirectory(privateDir.getAbsolutePath());
+                    Toast.makeText(this, "已切换到应用私有目录", Toast.LENGTH_SHORT).show();
+                } else {
+                    finish();
+                }
             }
-        }
-    }
-
-    // 存储设备项
-    private static class StorageVolumeItem extends File {
-        private final String displayName;
-        private final boolean isRemovable;
-
-        StorageVolumeItem(File path, String name, boolean removable) {
-            super(path.getAbsolutePath());
-            this.displayName = name;
-            this.isRemovable = removable;
         }
     }
 
@@ -491,9 +549,8 @@ public class MainActivity extends AppCompatActivity {
     // 适配器实现
     private static class FileAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
-        private static final int TYPE_STORAGE = 0;
+        private static final int TYPE_BACK = 0;
         private static final int TYPE_FILE = 1;
-        private static final int TYPE_BACK = 2;
 
         private final Context context;
         private final List<Object> items;
@@ -507,10 +564,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             LayoutInflater inflater = LayoutInflater.from(context);
-            if (viewType == TYPE_STORAGE) {
-                View view = inflater.inflate(R.layout.item_storage, parent, false);
-                return new StorageHolder(view);
-            }
             View view = inflater.inflate(R.layout.item_file, parent, false);
             return new FileHolder(view);
         }
@@ -518,66 +571,67 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             Object item = items.get(position);
+            FileHolder fh = (FileHolder) holder;
 
-            if (holder instanceof StorageHolder && item instanceof StorageVolumeItem) {
-                StorageVolumeItem storage = (StorageVolumeItem) item;
-                StorageHolder sh = (StorageHolder) holder;
-                sh.icon.setText(storage.isRemovable ? "💾" : "📱");
-                sh.name.setText(storage.displayName);
-                sh.itemView.setOnClickListener(v -> {
-                    ((MainActivity) context).navigateTo(storage);
-                });
-
-            } else if (holder instanceof FileHolder) {
-                FileHolder fh = (FileHolder) holder;
-
-                if (item instanceof BackItem) {
-                    fh.icon.setText("⬆️");
-                    fh.name.setText("返回上级");
-                    fh.itemView.setOnClickListener(v -> {
-                        File currentDir = new File(((MainActivity) context).currentPath);
+            if (item instanceof BackItem) {
+                fh.icon.setText("⬅️");
+                fh.name.setText("返回上级");
+                fh.itemView.setOnClickListener(v -> {
+                    MainActivity activity = (MainActivity) context;
+                    if (activity.currentPath != null) {
+                        File currentDir = new File(activity.currentPath);
                         String parent = currentDir.getParent();
                         if (parent != null) {
-                            ((MainActivity) context).loadDirectory(parent);
+                            activity.loadDirectory(parent);
                         }
-                    });
-                } else if (item instanceof File) {
-                    File file = (File) item;
-                    fh.icon.setText(file.isDirectory() ? "📁" : "📄");
-                    fh.name.setText(file.getName());
-                    fh.itemView.setOnClickListener(v -> ((MainActivity) context).navigateTo(file));
-                    fh.itemView.setOnLongClickListener(v -> {
-                        if (!file.isDirectory()) {
-                            ((MainActivity) context).showDeleteDialog(file);
-                            return true;
-                        }
-                        return false;
-                    });
-                }
+                    }
+                });
+            } else if (item instanceof File) {
+                File file = (File) item;
+                fh.icon.setText(file.isDirectory() ? "📁" : getIconForFile(file));
+                fh.name.setText(file.getName());
+
+                // 长按删除（仅文件）
+                fh.itemView.setOnLongClickListener(v -> {
+                    if (!file.isDirectory()) {
+                        ((MainActivity) context).showDeleteDialog(file);
+                        return true;
+                    }
+                    return false;
+                });
+
+                // 点击导航
+                fh.itemView.setOnClickListener(v -> ((MainActivity) context).navigateTo(file));
             }
+        }
+
+        private String getIconForFile(File file) {
+            String name = file.getName().toLowerCase();
+            if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
+                    name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")) {
+                return "🖼️";
+            } else if (name.endsWith(".mp4") || name.endsWith(".avi") || name.endsWith(".mkv")) {
+                return "🎬";
+            } else if (name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".flac")) {
+                return "🎵";
+            } else if (name.endsWith(".txt") || name.endsWith(".log") || name.endsWith(".md")) {
+                return "📄";
+            } else if (name.endsWith(".pdf")) {
+                return "📕";
+            } else if (name.endsWith(".apk")) {
+                return "📱";
+            }
+            return "📎";
         }
 
         @Override
         public int getItemViewType(int position) {
-            Object item = items.get(position);
-            if (item instanceof StorageVolumeItem) return TYPE_STORAGE;
-            if (item instanceof BackItem) return TYPE_BACK;
-            return TYPE_FILE;
+            return items.get(position) instanceof BackItem ? TYPE_BACK : TYPE_FILE;
         }
 
         @Override
         public int getItemCount() {
             return items.size();
-        }
-
-        static class StorageHolder extends RecyclerView.ViewHolder {
-            TextView icon, name;
-
-            StorageHolder(View itemView) {
-                super(itemView);
-                icon = itemView.findViewById(R.id.storage_icon);
-                name = itemView.findViewById(R.id.storage_name);
-            }
         }
 
         static class FileHolder extends RecyclerView.ViewHolder {
