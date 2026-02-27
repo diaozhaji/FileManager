@@ -225,8 +225,11 @@ public class NovelReaderActivity extends AppCompatActivity {
 
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
+
+        // 为左右各预留16dp边距
         pageWidth = metrics.widthPixels - dpToPx(32);
-        pageHeight = metrics.heightPixels - dpToPx(96);
+        // 注意：这里先预留一些空间，实际高度会在splitPages中重新计算
+        pageHeight = metrics.heightPixels - dpToPx(128); // 预留更多空间给工具栏和底部控制
     }
 
 
@@ -239,8 +242,9 @@ public class NovelReaderActivity extends AppCompatActivity {
                 originalContent = content; // 保存原始内容
                 Log.e("@@@", originalContent.length() + "字数");
                 parseChapters(content);
-                splitPages(content);
+
                 runOnUiThread(() -> {
+                    splitPages(content);
                     viewPager.setAdapter(new PagerAdapter());
                     restoreLastPosition();
                 });
@@ -362,42 +366,77 @@ public class NovelReaderActivity extends AppCompatActivity {
     private void splitPages(String content) {
         pages.clear();
 
-        // 重新计算实际可用高度（考虑当前控件布局）
-        DisplayMetrics metrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        int toolbarHeight = findViewById(R.id.toolbar).getHeight();
-        int bottomControlsHeight = findViewById(R.id.bottom_controls).getHeight();
-        pageHeight = metrics.heightPixels - toolbarHeight - bottomControlsHeight - dpToPx(32); // 32dp为文本边距
+        // 等待UI布局完成后再获取准确的高度
+        findViewById(android.R.id.content).post(() -> {
+            // 重新计算实际可用高度
+            DisplayMetrics metrics = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(metrics);
 
-        Layout layout = new StaticLayout(
-                content,
-                textPaint,
-                pageWidth,
-                Layout.Alignment.ALIGN_NORMAL,
-                1.2f,
-                0f,
-                false
-        );
+            int toolbarHeight = findViewById(R.id.toolbar).getHeight();
+            if (toolbarHeight == 0) toolbarHeight = dpToPx(56); // 默认工具栏高度
+            int bottomControlsHeight = findViewById(R.id.bottom_controls).getHeight();
+            if (bottomControlsHeight == 0) bottomControlsHeight = dpToPx(64); // 默认底部控制高度
 
-        int lineCount = layout.getLineCount();
-        int startLine = 0;
+            // 计算实际可用页面高度，预留额外边距
+            int availableHeight = metrics.heightPixels - toolbarHeight - bottomControlsHeight;
+            pageHeight = availableHeight - dpToPx(32); // 额外预留32dp作为上下安全边距
 
-        while (startLine < lineCount) {
-            int endLine = findPageEndLine(layout, startLine);
-            int start = layout.getLineStart(startLine);
-            int end = layout.getLineEnd(endLine);
-            pages.add(new Page(content.substring(start, end), start, end));
-            startLine = endLine + 1;
-        }
+            // 创建StaticLayout用于分页
+            Layout layout = new StaticLayout(
+                    content,
+                    textPaint,
+                    pageWidth,
+                    Layout.Alignment.ALIGN_NORMAL,
+                    1.2f, // 行间距倍数
+                    0f,   // 额外行间距
+                    false
+            );
+
+            int lineCount = layout.getLineCount();
+            int startLine = 0;
+
+            while (startLine < lineCount) {
+                int endLine = findPageEndLine(layout, startLine);
+
+                // 确保不会越界
+                endLine = Math.min(endLine, lineCount - 1);
+
+                int start = layout.getLineStart(startLine);
+                int end = layout.getLineEnd(endLine);
+
+                // 确保end不超过内容长度
+                end = Math.min(end, content.length());
+
+                pages.add(new Page(content.substring(start, end), start, end));
+
+                startLine = endLine + 1;
+
+                // 安全检查，避免无限循环
+                if (startLine >= lineCount) break;
+            }
+
+            // 在主线程中更新UI
+            runOnUiThread(() -> {
+                if (viewPager.getAdapter() != null) {
+                    viewPager.getAdapter().notifyDataSetChanged();
+                }
+            });
+        });
     }
 
     private int findPageEndLine(Layout layout, int startLine) {
         float accumulatedHeight = 0;
-        final float pageHeightWithMargin = pageHeight - dpToPx(16); // 增加底部留白
+        final float pageHeightWithMargin = pageHeight - dpToPx(8); // 额外的安全边距
 
         for (int i = startLine; i < layout.getLineCount(); i++) {
             float lineHeight = layout.getLineBottom(i) - layout.getLineTop(i);
+
+            // 检查添加这行后是否会超出页面高度
             if (accumulatedHeight + lineHeight > pageHeightWithMargin) {
+                // 如果是起始行就超出了，至少要包含一行
+                if (i == startLine) {
+                    return i;
+                }
                 return i - 1;
             }
             accumulatedHeight += lineHeight;
@@ -406,17 +445,13 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private void refreshTextDisplay() {
-        // 更新文本参数后重新计算控件高度
+        // 更新文本参数
         textPaint.setTextSize(spToPx(textSizeSp));
         textPaint.setColor(textColor);
 
-        // 获取最新控件尺寸
-        findViewById(R.id.toolbar).post(() -> {
-            findViewById(R.id.bottom_controls).post(() -> {
-                splitPages(originalContent);
-                viewPager.getAdapter().notifyDataSetChanged();
-                viewPager.setCurrentItem(currentPage, false);
-            });
+        // 重新分页（使用延迟执行确保UI已更新）
+        findViewById(android.R.id.content).post(() -> {
+            splitPages(originalContent);
         });
     }
 
@@ -502,9 +537,10 @@ public class NovelReaderActivity extends AppCompatActivity {
 
     private int findPageForPosition(int charPosition) {
         int totalLength = 0;
-        for (Page page : pages) {
+        for (int i = 0; i < pages.size(); i++) {
+            Page page = pages.get(i);
             if (charPosition >= totalLength && charPosition < totalLength + page.text.length()) {
-                return pages.indexOf(page);
+                return i;
             }
             totalLength += page.text.length();
         }
@@ -807,12 +843,22 @@ public class NovelReaderActivity extends AppCompatActivity {
             textView.setBackgroundColor(bgColor);
             textView.setLineSpacing(0, 1.2f);
             textView.setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16));
+
+            // 重要：设置文本对齐方式
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                textView.setJustificationMode(Layout.JUSTIFICATION_MODE_INTER_WORD);
+            }
+
             return new PageHolder(textView);
         }
 
         @Override
         public void onBindViewHolder(@NonNull PageHolder holder, int position) {
-            holder.textView.setText(pages.get(position).text);
+            String pageText = pages.get(position).text;
+            holder.textView.setText(pageText);
+
+            // 强制重新测量和布局
+            holder.textView.requestLayout();
         }
 
         @Override
