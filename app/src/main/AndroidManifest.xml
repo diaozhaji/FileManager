@@ -34,6 +34,11 @@
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.SimpleTool.FullScreen" />
 
+        <activity
+            android:name=".FlowActivity"
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.SimpleTool.FullScreen" />
+
 
         <!-- 在 <application> 标签内添加 -->
         <activity
@@ -70,6 +75,7 @@
 
 
     </application>
+
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />

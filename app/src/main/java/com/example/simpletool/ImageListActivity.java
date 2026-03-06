@@ -1,9 +1,7 @@
 package com.example.simpletool;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Matrix;
 import android.media.ExifInterface;
 import android.os.Bundle;
 import android.util.Log;
@@ -22,7 +20,6 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.MemoryCategory;
 import com.bumptech.glide.load.DecodeFormat;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.bumptech.glide.request.RequestOptions;
 import com.example.simpletool.utils.RotateTransformation;
 
@@ -191,9 +188,9 @@ public class ImageListActivity extends AppCompatActivity {
                     .into(holder.imageView);
 
             holder.itemView.setOnClickListener(v -> {
-                Intent intent = new Intent(ImageListActivity.this, ImagePreviewActivity.class);
-                intent.putStringArrayListExtra("image_paths", new ArrayList<>(getFilePaths()));
-                intent.putExtra("position", position);
+                Intent intent = new Intent(ImageListActivity.this, FlowActivity.class);
+                intent.putExtra("image_paths", getFilePaths().toArray(new String[0]));
+                intent.putExtra("current_position", position);
                 startActivity(intent);
                 overridePendingTransition(R.anim.fade_in, R.anim.fade_out);
             });
