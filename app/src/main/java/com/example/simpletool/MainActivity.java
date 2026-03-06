@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -48,7 +49,10 @@ public class MainActivity extends AppCompatActivity {
     private String currentPath;
 
     private static final int REQUEST_CODE_PERMISSIONS = 1001;
-    private static final String[] REQUIRED_PERMISSIONS = {
+    private static final int REQUEST_CODE_MANAGE_STORAGE = 1002;
+
+    // Android 10 及以下需要的权限
+    private static final String[] REQUIRED_PERMISSIONS_LEGACY = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
@@ -87,59 +91,147 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkPermissions() {
-        // Android 10+ 不再需要 MANAGE_EXTERNAL_STORAGE 也能访问公共目录
-        if (allPermissionsGranted()) {
-            // 直接进入 Download 目录（最安全的公共目录）
-            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ 需要 MANAGE_EXTERNAL_STORAGE 权限
+            if (!Environment.isExternalStorageManager()) {
+                requestManageExternalStoragePermission();
+            } else {
+                loadDirectory(getDownloadsDirectory().getAbsolutePath());
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10 使用 scoped storage，但仍需尝试获取公共目录
+            if (allPermissionsGranted()) {
+                loadDirectory(getDownloadsDirectory().getAbsolutePath());
+            } else {
+                ActivityCompat.requestPermissions(
+                        this,
+                        REQUIRED_PERMISSIONS_LEGACY,
+                        REQUEST_CODE_PERMISSIONS
+                );
+            }
         } else {
-            ActivityCompat.requestPermissions(
-                    this,
-                    REQUIRED_PERMISSIONS,
-                    REQUEST_CODE_PERMISSIONS
-            );
+            // Android 9 及以下
+            if (allPermissionsGranted()) {
+                loadDirectory(getDownloadsDirectory().getAbsolutePath());
+            } else {
+                ActivityCompat.requestPermissions(
+                        this,
+                        REQUIRED_PERMISSIONS_LEGACY,
+                        REQUEST_CODE_PERMISSIONS
+                );
+            }
         }
     }
 
-    // 关键修复：获取 Android 10 兼容的 Download 目录
-    private File getSafeDownloadDirectory() {
-        // 优先使用标准 API
-        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+    // 请求 MANAGE_EXTERNAL_STORAGE 权限（Android 11+）
+    private void requestManageExternalStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
+            } catch (Exception e) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE);
+            }
+        }
+    }
 
-        // 备用方案：尝试常见路径（vivo/华为等厂商定制路径）
-        if (downloadDir == null || !downloadDir.exists() || !downloadDir.canRead()) {
-            String[] fallbackPaths = {
-                    Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download",
-                    Environment.getExternalStorageDirectory().getAbsolutePath() + "/download",
-                    "/sdcard/Download",
-                    "/sdcard/download",
-                    "/storage/emulated/0/Download",
-                    "/storage/emulated/0/download"
-            };
-
-            for (String path : fallbackPaths) {
-                File dir = new File(path);
-                if (dir.exists() && dir.isDirectory() && dir.canRead()) {
-                    return dir;
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_MANAGE_STORAGE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Environment.isExternalStorageManager()) {
+                    loadDirectory(getDownloadsDirectory().getAbsolutePath());
+                } else {
+                    Toast.makeText(this, "需要存储权限才能浏览文件", Toast.LENGTH_LONG).show();
+                    // 降级到应用私有目录
+                    loadDirectory(getAppPrivateDirectory().getAbsolutePath());
                 }
             }
         }
+    }
 
-        // 最后兜底：应用私有目录（始终可访问）
+    // 获取 Downloads 目录 - 针对 Android 10+ 和 vivo 手机优化
+    private File getDownloadsDirectory() {
+        // 方法1：尝试标准 API
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        if (isValidDirectory(downloadDir)) {
+            Log.d("FileExplorer", "使用标准API获取Downloads目录: " + downloadDir.getAbsolutePath());
+            return downloadDir;
+        }
+
+        // 方法2：常见 Downloads 路径（适配 vivo、华为等国产手机）
+        String[] commonPaths = {
+                "/storage/emulated/0/Download",
+                "/storage/emulated/0/Downloads",
+                "/storage/emulated/0/download",
+                "/storage/emulated/0/downloads",
+                "/sdcard/Download",
+                "/sdcard/Downloads",
+                "/sdcard/download",
+                "/sdcard/downloads"
+        };
+
+        for (String path : commonPaths) {
+            File dir = new File(path);
+            if (isValidDirectory(dir)) {
+                Log.d("FileExplorer", "使用常见路径获取Downloads目录: " + path);
+                return dir;
+            }
+        }
+
+        // 方法3：vivo 手机特殊路径
+        String[] vivoPaths = {
+                "/storage/emulated/0/荣耀/Download",
+                "/storage/emulated/0/荣耀/Downloads",
+                "/storage/emulated/0/VIVO/Download",
+                "/storage/emulated/0/VIVO/Downloads",
+                "/storage/emulated/0/Android/data/com.android.providers.downloads.documents"
+        };
+
+        for (String path : vivoPaths) {
+            File dir = new File(path);
+            if (isValidDirectory(dir)) {
+                Log.d("FileExplorer", "使用vivo特殊路径获取Downloads目录: " + path);
+                return dir;
+            }
+        }
+
+        // 方法4：获取外部存储根目录，让用户手动进入 Downloads
+        File externalStorage = Environment.getExternalStorageDirectory();
+        if (isValidDirectory(externalStorage)) {
+            Log.d("FileExplorer", "使用外部存储根目录: " + externalStorage.getAbsolutePath());
+            return externalStorage;
+        }
+
+        // 方法5：终极降级 - 应用私有目录
+        File privateDir = getAppPrivateDirectory();
+        Log.d("FileExplorer", "降级到应用私有目录: " + privateDir.getAbsolutePath());
+        return privateDir;
+    }
+
+    // 检查目录是否有效（存在、可读、是目录）
+    private boolean isValidDirectory(File dir) {
+        return dir != null && dir.exists() && dir.isDirectory() && dir.canRead();
+    }
+
+    // 获取应用私有目录
+    private File getAppPrivateDirectory() {
         File privateDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (privateDir != null && privateDir.exists()) {
             return privateDir;
         }
-
-        // 终极兜底：外部存储根目录（Android 10 可能受限，但比 /storage 安全）
-        return Environment.getExternalStorageDirectory();
+        // 备用：应用私有根目录
+        return getExternalFilesDir(null);
     }
 
     private void loadDirectory(String path) {
         Log.d("FileExplorer", "Loading directory: " + path);
 
         if (path == null || path.isEmpty()) {
-            // 无法加载时回退到安全目录
-            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+            loadDirectory(getDownloadsDirectory().getAbsolutePath());
             return;
         }
 
@@ -147,7 +239,7 @@ public class MainActivity extends AppCompatActivity {
         File currentDir = new File(path);
         fileList.clear();
 
-        // 添加"返回上级"按钮（特殊处理 Android 10 根目录）
+        // 添加"返回上级"按钮
         if (shouldShowBackButton(currentDir)) {
             fileList.add(new BackItem());
         }
@@ -157,7 +249,6 @@ public class MainActivity extends AppCompatActivity {
             List<File> allFiles = new ArrayList<>();
             for (File file : filesArray) {
                 if (file != null) {
-                    // 只显示可读的目录和文件
                     if ((file.isDirectory() && file.canRead()) || file.isFile()) {
                         allFiles.add(file);
                     }
@@ -166,10 +257,8 @@ public class MainActivity extends AppCompatActivity {
             sortFiles(allFiles);
             fileList.addAll(allFiles);
         } else {
-            // 无权限访问时的友好提示
             Toast.makeText(this, "无法访问此目录（权限限制）", Toast.LENGTH_SHORT).show();
-            // 自动返回到安全目录
-            loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+            loadDirectory(getDownloadsDirectory().getAbsolutePath());
             return;
         }
 
@@ -177,24 +266,21 @@ public class MainActivity extends AppCompatActivity {
         fileAdapter.notifyDataSetChanged();
     }
 
-    // 关键修复：智能判断是否显示"返回上级"按钮
+    // 智能判断是否显示"返回上级"按钮
     private boolean shouldShowBackButton(File currentDir) {
         if (currentDir == null) return false;
 
-        // Android 10 特殊处理：禁止返回到 /storage 根目录
-        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+        // Android 10 禁止返回到根目录
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             String parentPath = currentDir.getParent();
             if (parentPath != null) {
-                // 检测是否要返回到危险根目录
                 if (parentPath.equals("/storage") ||
                         parentPath.equals("/mnt") ||
                         parentPath.equals("/")) {
-                    return false; // 阻止返回
+                    return false;
                 }
-                // 检测是否要返回到外部存储根目录（/storage/emulated/0）
                 File externalStorage = Environment.getExternalStorageDirectory();
                 if (externalStorage != null && parentPath.equals(externalStorage.getAbsolutePath())) {
-                    // 允许返回到外部存储根目录，但仅显示安全子目录
                     return true;
                 }
             }
@@ -315,7 +401,6 @@ public class MainActivity extends AppCompatActivity {
             if (mimeType != null) return mimeType;
         }
 
-        // 备用方案：通过文件流检测
         try (InputStream is = new FileInputStream(file)) {
             String mimeType = URLConnection.guessContentTypeFromStream(is);
             if (mimeType != null && !mimeType.isEmpty()) return mimeType;
@@ -354,7 +439,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // Android 10 友好路径显示
         String displayPath = path;
         File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         if (downloadDir != null && path.startsWith(downloadDir.getAbsolutePath())) {
@@ -366,7 +450,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 限制路径长度避免UI溢出
         if (displayPath.length() > 40) {
             displayPath = "..." + displayPath.substring(displayPath.length() - 37);
         }
@@ -384,20 +467,17 @@ public class MainActivity extends AppCompatActivity {
         File currentDir = new File(currentPath);
         String parentPath = currentDir.getParent();
 
-        // Android 10 关键修复：禁止返回到危险根目录
-        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && parentPath != null) {
+        // Android 10+ 禁止返回到危险根目录
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && parentPath != null) {
             if (parentPath.equals("/storage") ||
                     parentPath.equals("/mnt") ||
                     parentPath.equals("/")) {
-                // 直接返回到安全目录
-                loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+                loadDirectory(getDownloadsDirectory().getAbsolutePath());
                 return;
             }
 
-            // 检测是否要返回到外部存储根目录
             File externalStorage = Environment.getExternalStorageDirectory();
             if (externalStorage != null && parentPath.equals(externalStorage.getAbsolutePath())) {
-                // 允许返回，但限制只能看到安全子目录
                 loadDirectory(parentPath);
                 return;
             }
@@ -406,13 +486,12 @@ public class MainActivity extends AppCompatActivity {
         if (parentPath != null) {
             loadDirectory(parentPath);
         } else {
-            // 已到根目录，退出应用
             super.onBackPressed();
         }
     }
 
     private boolean allPermissionsGranted() {
-        for (String permission : REQUIRED_PERMISSIONS) {
+        for (String permission : REQUIRED_PERMISSIONS_LEGACY) {
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 return false;
             }
@@ -424,8 +503,8 @@ public class MainActivity extends AppCompatActivity {
         if (target == null) return;
 
         if (target.isDirectory()) {
-            // Android 10 关键修复：阻止访问危险目录
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            // Android 10 阻止访问危险目录
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 String path = target.getAbsolutePath();
                 if (path.startsWith("/storage") && !path.startsWith(Environment.getExternalStorageDirectory().getAbsolutePath())) {
                     Toast.makeText(this, "Android 10 限制：无法访问此目录", Toast.LENGTH_SHORT).show();
@@ -442,7 +521,6 @@ public class MainActivity extends AppCompatActivity {
         if (files == null || files.isEmpty()) return;
 
         Collections.sort(files, (f1, f2) -> {
-            // 目录始终排在文件前面
             if (f1.isDirectory() && !f2.isDirectory()) return -1;
             if (!f1.isDirectory() && f2.isDirectory()) return 1;
 
@@ -521,17 +599,12 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                loadDirectory(getSafeDownloadDirectory().getAbsolutePath());
+                loadDirectory(getDownloadsDirectory().getAbsolutePath());
             } else {
                 Toast.makeText(this, "需要存储权限才能浏览文件", Toast.LENGTH_SHORT).show();
-                // 提供降级方案：使用应用私有目录
-                File privateDir = getExternalFilesDir(null);
-                if (privateDir != null) {
-                    loadDirectory(privateDir.getAbsolutePath());
-                    Toast.makeText(this, "已切换到应用私有目录", Toast.LENGTH_SHORT).show();
-                } else {
-                    finish();
-                }
+                // 降级到应用私有目录
+                loadDirectory(getAppPrivateDirectory().getAbsolutePath());
+                Toast.makeText(this, "已切换到应用私有目录", Toast.LENGTH_SHORT).show();
             }
         }
     }
