@@ -1,150 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="24dp"
+    android:background="@android:color/white">
+
+    <!-- 标题 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="阅读设置"
+        android:textSize="20sp"
+        android:textColor="#333333"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingBottom="16dp" />
 
     <!-- 字号设置 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="字体大小"
-        android:textSize="16sp" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <SeekBar
-            android:id="@+id/sbTextSize"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp">
 
         <TextView
-            android:id="@+id/tvTextSize"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:textSize="16sp" />
+            android:text="字体大小"
+            android:textSize="16sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="A"
+                android:textSize="14sp"
+                android:textColor="#999999" />
+
+            <SeekBar
+                android:id="@+id/sbTextSize"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="14"
+                android:progress="4"
+                android:progressTint="#4A90D9"
+                android:thumbTint="#4A90D9" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="A"
+                android:textSize="22sp"
+                android:textColor="#999999" />
+
+            <TextView
+                android:id="@+id/tvTextSize"
+                android:layout_width="60dp"
+                android:layout_height="wrap_content"
+                android:text="18 sp"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:gravity="center"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
-    <!-- 文字颜色 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="文字颜色"
-        android:textSize="16sp" />
-
-    <RadioGroup
-        android:id="@+id/rgColor"
+    <!-- 行间距设置 -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingTop="8dp">
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp">
 
-        <RadioButton
-            android:id="@+id/rbBlack"
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:drawablePadding="8dp"
-            android:gravity="center"
-            android:text="黑色" />
+            android:text="行间距"
+            android:textSize="16sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp" />
 
-        <RadioButton
-            android:id="@+id/rbRed"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="密"
+                android:textSize="14sp"
+                android:textColor="#999999" />
+
+            <SeekBar
+                android:id="@+id/sbLineSpacing"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="15"
+                android:progress="4"
+                android:progressTint="#4A90D9"
+                android:thumbTint="#4A90D9" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="疏"
+                android:textSize="14sp"
+                android:textColor="#999999" />
+
+            <TextView
+                android:id="@+id/tvLineSpacing"
+                android:layout_width="60dp"
+                android:layout_height="wrap_content"
+                android:text="1.4"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:gravity="center"
+                android:layout_marginStart="8dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 文本颜色 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp">
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="红色" />
+            android:text="字体颜色"
+            android:textSize="16sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="12dp" />
 
-        <RadioButton
-            android:id="@+id/rbBlue"
-            android:layout_width="wrap_content"
+        <RadioGroup
+            android:id="@+id/rgColor"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="蓝色" />
-    </RadioGroup>
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <RadioButton
+                android:id="@+id/rbColor1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:button="@null" />
+
+            <RadioButton
+                android:id="@+id/rbColor2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:button="@null" />
+
+            <RadioButton
+                android:id="@+id/rbColor3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:button="@null" />
+
+            <RadioButton
+                android:id="@+id/rbColor4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:button="@null" />
+
+        </RadioGroup>
+
+    </LinearLayout>
 
     <!-- 背景颜色 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="背景颜色"
-        android:textSize="16sp" />
-
-    <RadioGroup
-        android:id="@+id/rgBgColor"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="80dp"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingTop="8dp">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="20dp">
 
-        <RadioButton
-            android:id="@+id/rbWhite"
-            android:layout_width="0dp"
+        <TextView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="白色" />
+            android:text="背景颜色"
+            android:textSize="16sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="12dp" />
 
-        <RadioButton
-            android:id="@+id/rbYellow"
-            android:layout_width="0dp"
+        <RadioGroup
+            android:id="@+id/rgBgColor"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="护眼黄" />
+            android:orientation="horizontal"
+            android:gravity="center">
 
-        <RadioButton
-            android:id="@+id/rbGreen"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="护眼绿" />
+            <RadioButton
+                android:id="@+id/rbBg1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:button="@null"
+                android:text="白"
+                android:textSize="12sp"
+                android:textColor="#333333"
+                android:gravity="center" />
 
-        <RadioButton
-            android:id="@+id/rbGray"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/radio_color_selector"
-            android:button="@null"
-            android:gravity="center"
-            android:text="浅灰色" />
-    </RadioGroup>
+            <RadioButton
+                android:id="@+id/rbBg2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:button="@null"
+                android:text="黄"
+                android:textSize="12sp"
+                android:textColor="#333333"
+                android:gravity="center" />
 
-    <!-- 预览文本 -->
+            <RadioButton
+                android:id="@+id/rbBg3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:button="@null"
+                android:text="绿"
+                android:textSize="12sp"
+                android:textColor="#333333"
+                android:gravity="center" />
+
+            <RadioButton
+                android:id="@+id/rbBg4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:button="@null"
+                android:text="灰"
+                android:textSize="12sp"
+                android:textColor="#333333"
+                android:gravity="center" />
+
+        </RadioGroup>
+
+    </LinearLayout>
+
+    <!-- 预览区域 -->
     <TextView
         android:id="@+id/previewText"
         android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:background="#FFF5E6CA"
+        android:text="这是预览文字效果"
+        android:textSize="18sp"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:layout_marginBottom="20dp" />
+
+    <!-- 按钮区域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:background="@drawable/preview_background"
-        android:padding="12dp"
-        android:text="预览文本：ABCDEabcde"
-        android:textAlignment="center" />
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <Button
+            android:id="@+id/btnCancel"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="取消"
+            android:textSize="16sp"
+            android:textColor="#666666"
+            android:background="@drawable/btn_cancel_background"
+            android:layout_marginEnd="12dp" />
+
+        <Button
+            android:id="@+id/btnConfirm"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="确定"
+            android:textSize="16sp"
+            android:textColor="@android:color/white"
+            android:background="@drawable/btn_confirm_background" />
+
+    </LinearLayout>
+
 </LinearLayout>

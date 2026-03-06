@@ -3,6 +3,7 @@ package com.example.simpletool;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.app.Dialog;
 import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
@@ -16,12 +17,16 @@ import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.SeekBar;
@@ -49,8 +54,58 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class NovelReaderActivity extends AppCompatActivity {
+
+    // ==================== 常量定义 ====================
+    // SharedPreferences 键名
     private static final String PREFS_NAME = "NovelReaderPrefs";
     private static final String KEY_LAST_POSITION = "last_position_";
+    private static final String KEY_TEXT_SIZE = "text_size";
+    private static final String KEY_TEXT_COLOR = "text_color";
+    private static final String KEY_BG_COLOR = "bg_color";
+    private static final String KEY_LINE_SPACING = "line_spacing";
+
+    // 字号设置范围 (sp)
+    private static final int MIN_TEXT_SIZE = 14;
+    private static final int MAX_TEXT_SIZE = 28;
+    private static final int DEFAULT_TEXT_SIZE = 18;
+
+    // 行间距设置范围 (倍数)
+    private static final float MIN_LINE_SPACING = 1.0f;
+    private static final float MAX_LINE_SPACING = 2.5f;
+    private static final float DEFAULT_LINE_SPACING = 1.4f;
+
+    // 边距设置 (dp)
+    private static final int PADDING_HORIZONTAL_DP = 24;  // 左右各24dp
+    private static final int PADDING_VERTICAL_DP = 12;    // 上下各12dp
+    private static final int LINE_SPACING_EXTRA_DP = 8;   // 额外的行间距
+
+    // 触摸相关
+    private static final int CLICK_THRESHOLD_DP = 4;
+
+    // 动画时长 (毫秒)
+    private static final int CONTROLS_ANIMATION_DURATION = 200;
+
+    // 颜色选项
+    private static final int COLOR_TEXT_DEFAULT = 0xFF333333;
+    private static final int COLOR_BG_DEFAULT = 0xFFF5E6CA;
+
+    // 背景颜色选项数组
+    private static final int[] BG_COLOR_OPTIONS = {
+            0xFFFFFFFF,    // 白色
+            0xFFF5E6CA,   // 护眼黄
+            0xFFE6F5EA,   // 护眼绿
+            0xFFE0E0E0    // 浅灰
+    };
+
+    // 文本颜色选项数组
+    private static final int[] TEXT_COLOR_OPTIONS = {
+            0xFF333333,   // 深灰
+            0xFF1A1A1A,   // 接近黑色
+            0xFF8B0000,   // 深红
+            0xFF000080    // 深蓝
+    };
+
+    // ==================== 成员变量 ====================
     private ViewPager2 viewPager;
     private TextView tvProgress;
     private SeekBar sbProgress;
@@ -62,28 +117,19 @@ public class NovelReaderActivity extends AppCompatActivity {
     private int pageWidth;
     private int pageHeight;
 
-    // 新增功能成员变量
+    // 阅读设置
     private TextToSpeech tts;
     private boolean isSpeaking = false;
-    private int textSizeSp = 16;
-    private int textColor = Color.BLACK;
-    private int bgColor = 0xFFF5E6CA; // 默认护眼黄
-    private final int[] colorOptions = {
-            0xFFFFFFFF,    // 白色
-            0xFFF5E6CA,    // 护眼黄
-            0xFFE6F5EA,    // 护眼绿
-            0xFFE0E0E0     // 浅灰
-    };
+    private int textSizeSp = DEFAULT_TEXT_SIZE;
+    private int textColor = COLOR_TEXT_DEFAULT;
+    private int bgColor = COLOR_BG_DEFAULT;
+    private float lineSpacing = DEFAULT_LINE_SPACING;
 
     private boolean isControlsVisible = true;
     private ValueAnimator controlsAnimator;
-
-    // 新增成员变量保存原始文本
     private String originalContent;
 
-    // 字号范围调整为12sp-24sp
-    private static final int MIN_TEXT_SIZE = 12;
-    private static final int MAX_TEXT_SIZE = 24;
+    // ==================== 常量定义结束 ====================
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,7 +156,7 @@ public class NovelReaderActivity extends AppCompatActivity {
         View touchLayer = findViewById(R.id.touch_layer);
         touchLayer.setOnTouchListener(new View.OnTouchListener() {
             private float startX, startY;
-            private final int CLICK_THRESHOLD = dpToPx(4); // 4dp移动视为点击
+            private final int clickThreshold = dpToPx(CLICK_THRESHOLD_DP);
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -127,19 +173,16 @@ public class NovelReaderActivity extends AppCompatActivity {
             }
 
             private void handleTouchEvent(float x, float y) {
-                // 计算控件可见区域
                 Rect toolbarRect = getViewRect(findViewById(R.id.toolbar));
                 Rect bottomRect = getViewRect(findViewById(R.id.bottom_controls));
 
-                // 排除工具栏和底部控制栏区域
                 if (toolbarRect.contains((int) x, (int) y) ||
                         bottomRect.contains((int) x, (int) y)) {
-                    return; // 不处理这些区域的点击
+                    return;
                 }
 
-                // 判断是否为有效点击（移动距离阈值）
-                if (Math.abs(x - startX) < CLICK_THRESHOLD &&
-                        Math.abs(y - startY) < CLICK_THRESHOLD) {
+                if (Math.abs(x - startX) < clickThreshold &&
+                        Math.abs(y - startY) < clickThreshold) {
                     handlePageClick(x);
                 }
             }
@@ -173,11 +216,7 @@ public class NovelReaderActivity extends AppCompatActivity {
     private void flipPage(int direction) {
         int current = viewPager.getCurrentItem();
         int target = current + direction;
-
-        // 使用平滑滚动关闭的切换方式
         viewPager.setCurrentItem(target, false);
-
-        // 更新进度显示
         updateProgress();
     }
 
@@ -193,7 +232,7 @@ public class NovelReaderActivity extends AppCompatActivity {
         float endAlpha = isControlsVisible ? 0f : 1f;
 
         controlsAnimator = ValueAnimator.ofFloat(startAlpha, endAlpha);
-        controlsAnimator.setDuration(200);
+        controlsAnimator.setDuration(CONTROLS_ANIMATION_DURATION);
         controlsAnimator.addUpdateListener(animation -> {
             float alpha = (float) animation.getAnimatedValue();
             toolbar.setAlpha(alpha);
@@ -212,9 +251,9 @@ public class NovelReaderActivity extends AppCompatActivity {
         controlsAnimator.start();
     }
 
-    private void updateButtonColor(int textColor) {
+    private void updateButtonColor(int color) {
         ImageButton btnChapter = findViewById(R.id.btnChapter);
-        btnChapter.setColorFilter(textColor, PorterDuff.Mode.SRC_IN);
+        btnChapter.setColorFilter(color, PorterDuff.Mode.SRC_IN);
     }
 
     private void initTextPaint() {
@@ -230,10 +269,9 @@ public class NovelReaderActivity extends AppCompatActivity {
             try {
                 String encoding = detectEncoding(new File(filePath));
                 String content = readFileWithEncoding(filePath, encoding);
-                originalContent = content; // 保存原始内容
+                originalContent = content;
                 Log.e("@@@", originalContent.length() + "字数");
                 parseChapters(content);
-                // 延迟到视图布局完成后分页
                 runOnUiThread(() -> {
                     viewPager.post(() -> {
                         splitPages(content);
@@ -259,23 +297,21 @@ public class NovelReaderActivity extends AppCompatActivity {
         chapters.clear();
         if (content == null || content.isEmpty()) return;
 
-        // 增强版正则表达式，支持更多章节格式
         Pattern pattern = Pattern.compile(
                 "(?m)^\\s*" +
                         "(?:" +
-                        "(?:第\\s*[\\d\\u4e00-\\u9fa5]{1,10}\\s*[章回卷节篇集部])" +  // 支持带空格的格式如"第 三 章"
-                        "|(?:[卷篇集部]\\s*[\\d\\u4e00-\\u9fa5]{1,10})" +           // 支持"卷三"等格式
-                        "|(?:[序楔终][卷章]?\\s*)" +                                // 支持序章、楔子、终章
+                        "(?:第\\s*[\\d\\u4e00-\\u9fa5]{1,10}\\s*[章回卷节篇集部])" +
+                        "|(?:[卷篇集部]\\s*[\\d\\u4e00-\\u9fa5]{1,10})" +
+                        "|(?:[序楔终][卷章]?\\s*)" +
                         ")" +
-                        "\\s*[：:—-]?\\s*" +                                       // 支持多种分隔符
-                        ".+" +                                                      // 必须包含实际标题内容
+                        "\\s*[：:—-]?\\s*" +
+                        ".+" +
                         "$"
         );
 
         Matcher matcher = pattern.matcher(content);
         List<Chapter> titleMatches = new ArrayList<>();
 
-        // 收集所有可能的章节标题
         while (matcher.find()) {
             String fullTitle = matcher.group().trim();
             titleMatches.add(new Chapter(
@@ -286,7 +322,6 @@ public class NovelReaderActivity extends AppCompatActivity {
         }
 
         if (!titleMatches.isEmpty()) {
-            // 智能合并相邻标题（防止错误匹配导致的分割错误）
             List<Chapter> validChapters = new ArrayList<>();
             Chapter prev = null;
             for (Chapter curr : titleMatches) {
@@ -294,9 +329,7 @@ public class NovelReaderActivity extends AppCompatActivity {
                     prev = curr;
                     continue;
                 }
-                // 如果两个标题间距过近（小于100字符），视为错误匹配
                 if (curr.startPos - prev.endPos < 100) {
-                    // 保留位置更合理的一个（取更长的标题）
                     if (curr.title.length() > prev.title.length()) {
                         prev = curr;
                     }
@@ -307,7 +340,6 @@ public class NovelReaderActivity extends AppCompatActivity {
             }
             validChapters.add(prev);
 
-            // 处理前言部分（首个章节前的内容）
             Chapter first = validChapters.get(0);
             if (first.startPos > 0) {
                 String preface = content.substring(0, first.startPos).trim();
@@ -316,14 +348,12 @@ public class NovelReaderActivity extends AppCompatActivity {
                 }
             }
 
-            // 构建完整章节结构
             for (int i = 0; i < validChapters.size(); i++) {
                 Chapter current = validChapters.get(i);
                 int endPos = (i < validChapters.size() - 1)
                         ? validChapters.get(i + 1).startPos
                         : content.length();
 
-                // 自动修正章节结束位置（跳过空白区域）
                 while (endPos > current.startPos &&
                         Character.isWhitespace(content.charAt(endPos - 1))) {
                     endPos--;
@@ -336,11 +366,10 @@ public class NovelReaderActivity extends AppCompatActivity {
                 ));
             }
 
-            // 检测尾声部分（最后章节后的有效内容）
             Chapter last = chapters.get(chapters.size() - 1);
             if (last.endPos < content.length()) {
                 String epilogue = content.substring(last.endPos).trim();
-                if (epilogue.length() > 50) {  // 至少50字符才视为尾声
+                if (epilogue.length() > 50) {
                     chapters.add(new Chapter(
                             "尾声",
                             last.endPos,
@@ -349,7 +378,6 @@ public class NovelReaderActivity extends AppCompatActivity {
                 }
             }
         } else {
-            // 无章节时处理全文
             chapters.add(new Chapter("全文", 0, content.length()));
         }
 
@@ -359,22 +387,26 @@ public class NovelReaderActivity extends AppCompatActivity {
     private void splitPages(String content) {
         pages.clear();
 
-        // 重新计算实际可用高度（考虑当前控件布局）
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
         int toolbarHeight = findViewById(R.id.toolbar).getHeight();
         int bottomControlsHeight = findViewById(R.id.bottom_controls).getHeight();
-        // 总高度减去工具栏和底部栏，再减去上下边距（各16dp）
-        pageHeight = metrics.heightPixels - toolbarHeight - bottomControlsHeight - dpToPx(32);
-        pageWidth = metrics.widthPixels - dpToPx(32); // 左右边距各16dp
 
+        // 使用常量计算边距
+        int verticalPadding = dpToPx(PADDING_VERTICAL_DP * 2);
+        int horizontalPadding = dpToPx(PADDING_HORIZONTAL_DP * 2);
+
+        pageHeight = metrics.heightPixels - toolbarHeight - bottomControlsHeight - verticalPadding;
+        pageWidth = metrics.widthPixels - horizontalPadding;
+
+        // 使用设置中的行间距倍数
         Layout layout = new StaticLayout(
                 content,
                 textPaint,
                 pageWidth,
                 Layout.Alignment.ALIGN_NORMAL,
-                1.2f,
-                0f,
+                lineSpacing,
+                dpToPx(LINE_SPACING_EXTRA_DP),
                 false
         );
 
@@ -403,15 +435,12 @@ public class NovelReaderActivity extends AppCompatActivity {
     }
 
     private void refreshTextDisplay() {
-        // 更新文本参数后重新计算控件高度
         textPaint.setTextSize(spToPx(textSizeSp));
         textPaint.setColor(textColor);
 
-        // 获取最新控件尺寸
         findViewById(R.id.toolbar).post(() -> {
             findViewById(R.id.bottom_controls).post(() -> {
                 splitPages(originalContent);
-                // 防止当前页码超出新分页总数
                 if (currentPage >= pages.size()) {
                     currentPage = pages.size() - 1;
                 }
@@ -544,33 +573,46 @@ public class NovelReaderActivity extends AppCompatActivity {
         }
     }
 
-    // 添加成员变量保存对话框视图引用
-    private View dialogView;
-    private SeekBar sbTextSize;
-    private RadioGroup rgColor;
-    private RadioGroup rgBgColor;
-    private TextView tvTextSize;
-    private TextView previewText;
-
+    // 美化版设置对话框 - 包含行间距调节
     private void showFontSettings() {
-        dialogView = getLayoutInflater().inflate(R.layout.dialog_font_settings, null);
-        sbTextSize = dialogView.findViewById(R.id.sbTextSize);
-        tvTextSize = dialogView.findViewById(R.id.tvTextSize);
-        rgColor = dialogView.findViewById(R.id.rgColor);
-        rgBgColor = dialogView.findViewById(R.id.rgBgColor);
-        previewText = dialogView.findViewById(R.id.previewText);
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_font_settings);
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.white);
+        dialog.getWindow().setLayout(
+                (int) (getResources().getDisplayMetrics().widthPixels * 0.9),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
 
-        // 初始化字号设置（12-24sp）
+        // 初始化视图
+        SeekBar sbTextSize = dialog.findViewById(R.id.sbTextSize);
+        TextView tvTextSize = dialog.findViewById(R.id.tvTextSize);
+        SeekBar sbLineSpacing = dialog.findViewById(R.id.sbLineSpacing);
+        TextView tvLineSpacing = dialog.findViewById(R.id.tvLineSpacing);
+        RadioGroup rgColor = dialog.findViewById(R.id.rgColor);
+        RadioGroup rgBgColor = dialog.findViewById(R.id.rgBgColor);
+        TextView previewText = dialog.findViewById(R.id.previewText);
+        Button btnConfirm = dialog.findViewById(R.id.btnConfirm);
+        Button btnCancel = dialog.findViewById(R.id.btnCancel);
+
+        // 初始化字号设置
         sbTextSize.setMax(MAX_TEXT_SIZE - MIN_TEXT_SIZE);
         sbTextSize.setProgress(textSizeSp - MIN_TEXT_SIZE);
         tvTextSize.setText(textSizeSp + " sp");
 
-        // 初始化预览文本
+        // 初始化行间距设置 (范围1.0-2.5，步长0.1)
+        int lineSpacingProgress = (int) ((lineSpacing - MIN_LINE_SPACING) * 10);
+        sbLineSpacing.setMax((int) ((MAX_LINE_SPACING - MIN_LINE_SPACING) * 10));
+        sbLineSpacing.setProgress(lineSpacingProgress);
+        tvLineSpacing.setText(String.format("%.1f", lineSpacing));
+
+        // 初始化预览
         previewText.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         previewText.setTextColor(textColor);
         previewText.setBackgroundColor(bgColor);
+        previewText.setLineSpacing(dpToPx(LINE_SPACING_EXTRA_DP), lineSpacing);
 
-        // 实时更新监听
+        // 字号滑动监听
         sbTextSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -580,108 +622,131 @@ public class NovelReaderActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // 行间距滑动监听
+        sbLineSpacing.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float newSpacing = MIN_LINE_SPACING + (progress / 10f);
+                tvLineSpacing.setText(String.format("%.1f", newSpacing));
+                previewText.setLineSpacing(dpToPx(LINE_SPACING_EXTRA_DP), newSpacing);
             }
 
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // 初始化颜色选择
-        initColorRadioGroup(rgColor, new int[]{Color.BLACK, Color.RED, Color.BLUE}, textColor);
-        initBgRadioGroup(rgBgColor, colorOptions, bgColor);
+        // 初始化文本颜色选择
+        initTextColorRadioGroup(rgColor, TEXT_COLOR_OPTIONS, textColor, previewText);
 
-        // 颜色选择监听
-        rgColor.setOnCheckedChangeListener((group, checkedId) -> {
-            previewText.setTextColor(getSelectedColor(group));
-        });
-        rgBgColor.setOnCheckedChangeListener((group, checkedId) -> {
-            previewText.setBackgroundColor(getSelectedColor(group));
+        // 初始化背景颜色选择
+        initBgRadioGroup(rgBgColor, BG_COLOR_OPTIONS, bgColor, previewText);
+
+        // 按钮点击事件
+        btnConfirm.setOnClickListener(v -> {
+            textSizeSp = sbTextSize.getProgress() + MIN_TEXT_SIZE;
+            lineSpacing = MIN_LINE_SPACING + (sbLineSpacing.getProgress() / 10f);
+            textColor = getSelectedColor(rgColor);
+            bgColor = getSelectedColor(rgBgColor);
+            saveFontSettings();
+            refreshTextDisplay();
+            updateButtonColor(textColor);
+            dialog.dismiss();
         });
 
-        new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .setPositiveButton("确定", (dialog, which) -> {
-                    applySettings(); // 使用Lambda确保监听器绑定正确
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        btnCancel.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.show();
     }
 
     private int getSelectedColor(RadioGroup group) {
         int checkedId = group.getCheckedRadioButtonId();
+        if (checkedId == -1) return Color.BLACK;
         RadioButton rb = group.findViewById(checkedId);
-        return (int) rb.getTag(); // 通过setTag存储颜色值
+        return (int) rb.getTag();
     }
 
-    private void initColorRadioGroup(RadioGroup group, int[] colors, int selectedColor) {
+    private void initTextColorRadioGroup(RadioGroup group, int[] colors, int selectedColor, TextView preview) {
         for (int i = 0; i < group.getChildCount(); i++) {
             RadioButton rb = (RadioButton) group.getChildAt(i);
-            rb.setTag(colors[i]); // 存储颜色值
+            rb.setTag(colors[i]);
+
+            // 设置圆形颜色预览
+            GradientDrawable bgDrawable = new GradientDrawable();
+            bgDrawable.setShape(GradientDrawable.OVAL);
+            bgDrawable.setSize(dpToPx(32), dpToPx(32));
+            bgDrawable.setColor(colors[i]);
+            bgDrawable.setStroke(dpToPx(2), Color.LTGRAY);
+            rb.setBackground(bgDrawable);
+
             if (colors[i] == selectedColor) {
                 group.check(rb.getId());
             }
         }
+
+        group.setOnCheckedChangeListener((group1, checkedId) -> {
+            if (checkedId != -1) {
+                RadioButton rb = group1.findViewById(checkedId);
+                preview.setTextColor((int) rb.getTag());
+            }
+        });
     }
 
-    // 初始化背景颜色单选组
-    private void initBgRadioGroup(RadioGroup group, int[] colors, int selectedColor) {
+    private void initBgRadioGroup(RadioGroup group, int[] colors, int selectedColor, TextView preview) {
         for (int i = 0; i < group.getChildCount(); i++) {
             RadioButton rb = (RadioButton) group.getChildAt(i);
             if (i < colors.length) {
-                // 设置背景色预览
                 GradientDrawable bgDrawable = new GradientDrawable();
                 bgDrawable.setShape(GradientDrawable.RECTANGLE);
-                bgDrawable.setCornerRadius(dpToPx(4));
+                bgDrawable.setCornerRadius(dpToPx(8));
                 bgDrawable.setColor(colors[i]);
                 bgDrawable.setStroke(dpToPx(2), Color.LTGRAY);
 
                 rb.setBackground(bgDrawable);
-                rb.setTag(colors[i]); // 存储颜色值
-                rb.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+                rb.setTag(colors[i]);
+                rb.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
 
-                // 添加选中状态标记
                 if (colors[i] == selectedColor) {
                     group.check(rb.getId());
-//                    rb.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_check, 0);
                 }
             }
         }
-    }
 
-    // 应用设置的方法
-    private void applySettings() {
-        Log.d("@@@", "applySettings");
-        // 获取最新设置
-        textSizeSp = sbTextSize.getProgress() + MIN_TEXT_SIZE;
-        textColor = getSelectedColor(rgColor);
-        bgColor = getSelectedColor(rgBgColor);
-
-        // 保存设置
-        saveFontSettings();
-        // 刷新显示
-        refreshTextDisplay();
-        // 更新按钮颜色
-        updateButtonColor(textColor);
+        group.setOnCheckedChangeListener((group1, checkedId) -> {
+            if (checkedId != -1) {
+                RadioButton rb = group1.findViewById(checkedId);
+                preview.setBackgroundColor((int) rb.getTag());
+            }
+        });
     }
 
     private void saveFontSettings() {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .edit()
-                .putInt("text_size", textSizeSp)
-                .putInt("text_color", textColor)
-                .putInt("bg_color", bgColor)
+                .putInt(KEY_TEXT_SIZE, textSizeSp)
+                .putInt(KEY_TEXT_COLOR, textColor)
+                .putInt(KEY_BG_COLOR, bgColor)
+                .putFloat(KEY_LINE_SPACING, lineSpacing)
                 .apply();
     }
 
     private void loadFontSettings() {
         textSizeSp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getInt("text_size", 16);
+                .getInt(KEY_TEXT_SIZE, DEFAULT_TEXT_SIZE);
         textColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getInt("text_color", Color.BLACK);
+                .getInt(KEY_TEXT_COLOR, COLOR_TEXT_DEFAULT);
         bgColor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getInt("bg_color", 0xFFF5E6CA);
+                .getInt(KEY_BG_COLOR, COLOR_BG_DEFAULT);
+        lineSpacing = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getFloat(KEY_LINE_SPACING, DEFAULT_LINE_SPACING);
     }
 
     private String detectEncoding(File file) throws IOException {
@@ -799,17 +864,26 @@ public class NovelReaderActivity extends AppCompatActivity {
             textView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
-            textView.setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16));
+
+            // 使用常量设置边距
+            textView.setPadding(
+                    dpToPx(PADDING_HORIZONTAL_DP),
+                    dpToPx(PADDING_VERTICAL_DP),
+                    dpToPx(PADDING_HORIZONTAL_DP),
+                    dpToPx(PADDING_VERTICAL_DP)
+            );
+            textView.setLineSpacing(dpToPx(LINE_SPACING_EXTRA_DP), lineSpacing);
+
             return new PageHolder(textView);
         }
 
         @Override
         public void onBindViewHolder(@NonNull PageHolder holder, int position) {
-            // 每次绑定都应用最新样式
             holder.textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
             holder.textView.setTextColor(textColor);
             holder.textView.setBackgroundColor(bgColor);
             holder.textView.setText(pages.get(position).text);
+            holder.textView.setLineSpacing(dpToPx(LINE_SPACING_EXTRA_DP), lineSpacing);
         }
 
         @Override
