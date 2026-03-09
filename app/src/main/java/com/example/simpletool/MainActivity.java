@@ -31,14 +31,18 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -301,6 +305,8 @@ public class MainActivity extends AppCompatActivity {
                 openTextReader(file);
             } else if (isImageFile(file)) {
                 openImageGallery(file);
+            } else if (isZipFile(file)) {
+                showExtractDialog(file);
             } else {
                 openWithSystemApp(file);
             }
@@ -431,6 +437,121 @@ public class MainActivity extends AppCompatActivity {
             if (name.endsWith("." + ext)) return true;
         }
         return false;
+    }
+
+    // 判断是否为ZIP文件
+    private boolean isZipFile(File file) {
+        if (file == null || !file.isFile()) return false;
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".zip") || name.endsWith(".rar");
+    }
+
+    // 显示解压对话框
+    private void showExtractDialog(File zipFile) {
+        String[] options = {"解压到同名文件夹", "解压到当前目录"};
+        new AlertDialog.Builder(this)
+                .setTitle("解压 " + zipFile.getName())
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        // 解压到同名文件夹
+                        String folderName = zipFile.getName().replaceAll("\\.(zip|rar)$", "");
+                        String extractPath = zipFile.getParent() + "/" + folderName;
+                        extractZip(zipFile, extractPath);
+                    } else {
+                        // 解压到当前目录
+                        extractZip(zipFile, zipFile.getParent());
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // 解压ZIP文件
+    private void extractZip(File zipFile, String extractPath) {
+        final android.app.ProgressDialog[] progress = {null};
+
+        new Thread(() -> {
+            try {
+                File destDir = new File(extractPath);
+                if (!destDir.exists()) {
+                    destDir.mkdirs();
+                }
+
+                ZipFile zip = new ZipFile(zipFile);
+                Enumeration<? extends ZipEntry> enumeration = zip.entries();
+                List<ZipEntry> entries = new ArrayList<>();
+                while (enumeration.hasMoreElements()) {
+                    entries.add(enumeration.nextElement());
+                }
+                int total = entries.size();
+                final int[] current = {0};
+
+                runOnUiThread(() -> {
+                    progress[0] = new android.app.ProgressDialog(this);
+                    progress[0].setTitle("解压中");
+                    progress[0].setMessage("正在解压...");
+                    progress[0].setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+                    progress[0].setMax(total);
+                    progress[0].setCancelable(false);
+                    progress[0].show();
+
+                    new Thread(() -> {
+                        try {
+                            for (ZipEntry entry : entries) {
+                                if (!entry.isDirectory()) {
+                                    File outFile = new File(destDir, entry.getName());
+                                    // 安全检查：防止路径遍历攻击
+                                    String canonicalDestPath = destDir.getCanonicalPath();
+                                    String canonicalOutFilePath = outFile.getCanonicalPath();
+                                    if (!canonicalOutFilePath.startsWith(canonicalDestPath + File.separator)) {
+                                        continue;
+                                    }
+
+                                    File parent = outFile.getParentFile();
+                                    if (parent != null && !parent.exists()) {
+                                        parent.mkdirs();
+                                    }
+
+                                    try (InputStream is = zip.getInputStream(entry);
+                                         FileOutputStream fos = new FileOutputStream(outFile)) {
+                                        byte[] buffer = new byte[8192];
+                                        int len;
+                                        while ((len = is.read(buffer)) > 0) {
+                                            fos.write(buffer, 0, len);
+                                        }
+                                    }
+                                }
+                                current[0]++;
+                                final int prog = current[0];
+                                runOnUiThread(() -> {
+                                    if (progress[0] != null) {
+                                        progress[0].setProgress(prog);
+                                    }
+                                });
+                            }
+                            zip.close();
+
+                            runOnUiThread(() -> {
+                                if (progress[0] != null) {
+                                    progress[0].dismiss();
+                                }
+                                Toast.makeText(this, "解压成功: " + destDir.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                                loadDirectory(extractPath);
+                            });
+                        } catch (Exception e) {
+                            runOnUiThread(() -> {
+                                if (progress[0] != null) {
+                                    progress[0].dismiss();
+                                }
+                                Toast.makeText(this, "解压失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }).start();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "解压失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void updatePathDisplay(String path) {
@@ -677,7 +798,9 @@ public class MainActivity extends AppCompatActivity {
 
         private String getIconForFile(File file) {
             String name = file.getName().toLowerCase();
-            if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
+            if (name.endsWith(".zip") || name.endsWith(".rar")) {
+                return "📦";
+            } else if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
                     name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")) {
                 return "🖼️";
             } else if (name.endsWith(".mp4") || name.endsWith(".avi") || name.endsWith(".mkv")) {
