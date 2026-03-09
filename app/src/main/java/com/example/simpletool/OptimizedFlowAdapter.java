@@ -1,19 +1,20 @@
 package com.example.simpletool;
 
 import android.content.Context;
+import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.media.ExifInterface;
-import android.util.Log;
+import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.MemoryCategory;
 import com.bumptech.glide.load.DecodeFormat;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.resource.bitmap.CenterInside;
@@ -22,22 +23,37 @@ import com.bumptech.glide.request.RequestOptions;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * 图片流式浏览适配器 - 支持长图优化显示
+ * 图片流式浏览适配器 - 最佳实践版本
+ * 综合两个版本的优点：
+ * 1. 后台预加载图片尺寸和EXIF信息（来自com.jy.imagebrowser）
+ * 2. 支持长图完整展示、EXIF旋转校正（来自com.example.simpletool）
+ * 3. 合理的缓存策略，避免过度消耗内存
  */
 public class OptimizedFlowAdapter extends RecyclerView.Adapter<OptimizedFlowAdapter.ImageViewHolder> {
 
     private static final String TAG = "OptimizedFlowAdapter";
 
     // 长图配置
-    private static final float EXTREME_RATIO = 3.0f;  // 极端宽高比阈值
-    // 不限制最大高度，让长图完整展示
+    private static final float EXTREME_RATIO = 3.0f;
 
     private final Context context;
     private final List<String> imagePaths;
     private OnItemClickListener listener;
+
+    // 预加载缓存（避免每次bindViewHolder都读文件）
+    private final Map<String, ImageInfo> imageInfoCache = new HashMap<>();
+    private final ExecutorService preloadExecutor = Executors.newSingleThreadExecutor();
+
+    // 屏幕尺寸（只获取一次）
+    private final int screenWidth;
+    private final int screenHeight;
 
     public interface OnItemClickListener {
         void onItemClick(int position);
@@ -47,9 +63,87 @@ public class OptimizedFlowAdapter extends RecyclerView.Adapter<OptimizedFlowAdap
         this.context = context;
         this.imagePaths = imagePaths != null ? imagePaths : new ArrayList<>();
 
-        // 提高Glide内存使用级别
-        if (context != null) {
-            Glide.get(context).setMemoryCategory(MemoryCategory.HIGH);
+        // 获取屏幕尺寸（只获取一次）
+        WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getMetrics(displayMetrics);
+        screenWidth = displayMetrics.widthPixels;
+        screenHeight = displayMetrics.heightPixels;
+
+        // 后台预加载所有图片的尺寸和EXIF信息
+        preloadImageInfo();
+    }
+
+    /**
+     * 后台预加载图片信息（尺寸+旋转角度）
+     * 只在构造函数中执行一次，避免滚动时重复IO
+     */
+    private void preloadImageInfo() {
+        if (imagePaths == null || imagePaths.isEmpty()) {
+            return;
+        }
+
+        preloadExecutor.execute(() -> {
+            for (String path : imagePaths) {
+                if (!imageInfoCache.containsKey(path)) {
+                    ImageInfo info = loadImageInfo(path);
+                    if (info != null) {
+                        synchronized (imageInfoCache) {
+                            imageInfoCache.put(path, info);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 加载单张图片的信息（尺寸+旋转角度）
+     */
+    private ImageInfo loadImageInfo(String path) {
+        File file = new File(path);
+        if (!file.exists()) {
+            return null;
+        }
+
+        ImageInfo info = new ImageInfo();
+
+        // 读取图片尺寸
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, options);
+
+        info.originalWidth = options.outWidth;
+        info.originalHeight = options.outHeight;
+
+        // 读取EXIF旋转角度
+        try {
+            ExifInterface exif = new ExifInterface(path);
+            int orientation = exif.getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+            );
+            info.rotation = getRotationFromExif(orientation);
+        } catch (IOException e) {
+            info.rotation = 0;
+        }
+
+        return info;
+    }
+
+    /**
+     * 从EXIF方向获取旋转角度
+     */
+    private int getRotationFromExif(int orientation) {
+        switch (orientation) {
+            case ExifInterface.ORIENTATION_ROTATE_90:
+                return 90;
+            case ExifInterface.ORIENTATION_ROTATE_180:
+                return 180;
+            case ExifInterface.ORIENTATION_ROTATE_270:
+                return 270;
+            default:
+                return 0;
         }
     }
 
@@ -75,24 +169,50 @@ public class OptimizedFlowAdapter extends RecyclerView.Adapter<OptimizedFlowAdap
             return;
         }
 
-        // 获取屏幕尺寸用于计算合适的图片尺寸
-        Point screenSize = getScreenSize();
+        // 从缓存获取图片信息（不再每次读文件）
+        ImageInfo info = imageInfoCache.get(imagePath);
 
         // 计算显示尺寸
-        int[] displaySize = calculateDisplaySize(imageFile, screenSize.x, screenSize.y);
+        int targetWidth;
+        int targetHeight;
 
-        // 获取旋转角度
-        int rotation = getExifRotation(imageFile);
+        if (info != null && info.originalWidth > 0 && info.originalHeight > 0) {
+            // 使用预加载的尺寸计算
+            float ratio = (float) info.originalWidth / info.originalHeight;
+
+            if (ratio > EXTREME_RATIO) {
+                // 极端宽图
+                targetHeight = screenHeight;
+                targetWidth = (int) (targetHeight * ratio);
+            } else if (ratio < 1.0f / EXTREME_RATIO) {
+                // 极端长图 - 完整展示
+                targetWidth = screenWidth;
+                targetHeight = (int) (targetWidth / ratio);
+            } else {
+                // 正常比例
+                if (info.originalWidth > info.originalHeight) {
+                    targetWidth = screenWidth;
+                    targetHeight = (int) (screenWidth / ratio);
+                } else {
+                    targetHeight = screenHeight;
+                    targetWidth = (int) (screenHeight * ratio);
+                }
+            }
+        } else {
+            // 缓存中没有信息，使用默认值
+            targetWidth = screenWidth;
+            targetHeight = screenWidth;
+        }
 
         // 构建RequestOptions
         RequestOptions requestOptions = new RequestOptions()
-                .override(displaySize[0], displaySize[1])
-                .format(DecodeFormat.PREFER_RGB_565)  // 使用RGB_565格式，更清晰
+                .override(targetWidth, targetHeight)
+                .format(DecodeFormat.PREFER_ARGB_8888)  // 使用ARGB_8888兼容性更好
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .skipMemoryCache(false);
 
-        // 根据旋转角度应用变换
-        if (rotation != 0) {
+        // 根据EXIF旋转应用变换（使用缓存的旋转角度）
+        if (info != null && info.rotation != 0) {
             requestOptions.transform(new CenterInside(), new RotateTransformation(imageFile));
         } else {
             requestOptions.transform(new CenterInside());
@@ -110,108 +230,27 @@ public class OptimizedFlowAdapter extends RecyclerView.Adapter<OptimizedFlowAdap
         }
     }
 
-    /**
-     * 计算图片显示尺寸
-     * 对于极端比例的长图，按短边等比例缩放
-     */
-    private int[] calculateDisplaySize(File imageFile, int screenWidth, int screenHeight) {
-        int[] originalSize = getImageSize(imageFile);
-        int originalWidth = originalSize[0];
-        int originalHeight = originalSize[1];
-
-        float ratio = (float) originalWidth / originalHeight;
-
-        int targetWidth;
-        int targetHeight;
-
-        if (ratio > EXTREME_RATIO) {
-            // 极端宽图 - 按高度等比例缩放
-            targetHeight = screenHeight;
-            targetWidth = (int) (targetHeight * ratio);
-            Log.d(TAG, "极端宽图: " + originalWidth + "x" + originalHeight +
-                    " -> " + targetWidth + "x" + targetHeight);
-        } else if (ratio < 1.0f / EXTREME_RATIO) {
-            // 极端长图 - 按宽度等比例缩放，完整展示不裁剪
-            targetWidth = screenWidth;
-            targetHeight = (int) (targetWidth / ratio);
-            // 不限制高度，让长图完整展示
-            Log.d(TAG, "极端长图: " + originalWidth + "x" + originalHeight +
-                    " -> " + targetWidth + "x" + targetHeight);
-        } else {
-            // 正常比例图片 - 适应屏幕宽度，保持比例
-            if (originalWidth > originalHeight) {
-                // 横向图片
-                targetWidth = screenWidth;
-                targetHeight = (int) (screenWidth / ratio);
-            } else {
-                // 纵向图片
-                targetHeight = screenHeight;
-                targetWidth = (int) (screenHeight * ratio);
-            }
-        }
-
-        return new int[]{targetWidth, targetHeight};
-    }
-
-    /**
-     * 获取图片原始尺寸
-     */
-    private int[] getImageSize(File file) {
-        android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
-        options.inJustDecodeBounds = true;
-        android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-        return new int[]{options.outWidth, options.outHeight};
-    }
-
-    /**
-     * 获取屏幕尺寸
-     */
-    private Point getScreenSize() {
-        Point point = new Point();
-        if (context != null) {
-            point.x = context.getResources().getDisplayMetrics().widthPixels;
-            point.y = context.getResources().getDisplayMetrics().heightPixels;
-        }
-        return point;
-    }
-
-    /**
-     * 获取EXIF旋转角度
-     */
-    private int getExifRotation(File file) {
-        try {
-            ExifInterface exif = new ExifInterface(file.getAbsolutePath());
-            int orientation = exif.getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL
-            );
-            switch (orientation) {
-                case ExifInterface.ORIENTATION_ROTATE_90:
-                    return 90;
-                case ExifInterface.ORIENTATION_ROTATE_180:
-                    return 180;
-                case ExifInterface.ORIENTATION_ROTATE_270:
-                    return 270;
-                default:
-                    return 0;
-            }
-        } catch (IOException e) {
-            return 0;
-        }
-    }
-
     @Override
     public int getItemCount() {
         return imagePaths.size();
     }
 
     /**
-     * 清理缓存
+     * 清理缓存，释放内存
      */
     public void clearCache() {
         if (context != null) {
             Glide.get(context).clearMemory();
         }
+    }
+
+    /**
+     * 预加载信息的数据类
+     */
+    private static class ImageInfo {
+        int originalWidth;
+        int originalHeight;
+        int rotation;
     }
 
     static class ImageViewHolder extends RecyclerView.ViewHolder {
